@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <style>
+      body {
+        margin: 0;
+        width: 220px;
+        font: 13px/1.4 -apple-system, "Segoe UI", Roboto, sans-serif;
+        background: #1e1f22;
+        color: #dbdee1;
+        padding: 12px;
+      }
+      .title {
+        font-weight: 600;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 8px;
+      }
+      .dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background: #80848e;
+      }
+      .dot.on {
+        background: #23a55a;
+        box-shadow: 0 0 6px #23a55a;
+      }
+      .count {
+        font-size: 22px;
+        font-weight: 700;
+        color: #fff;
+        margin: 4px 0 10px;
+      }
+      .count small {
+        font-size: 12px;
+        font-weight: 400;
+        color: #949ba4;
+      }
+      button {
+        width: 100%;
+        margin: 4px 0;
+        padding: 7px 10px;
+        border: 0;
+        border-radius: 6px;
+        cursor: pointer;
+        font-weight: 600;
+        font-size: 13px;
+        color: #fff;
+      }
+      button:disabled {
+        opacity: 0.4;
+        cursor: default;
+      }
+      .go { background: #248046; }
+      .go:hover:not(:disabled) { background: #1a6334; }
+      .stop { background: #b4432f; }
+      .stop:hover:not(:disabled) { background: #8f3323; }
+      .dl { background: #5865f2; }
+      .dl:hover:not(:disabled) { background: #4752c4; }
+      .txt { background: #4e5058; }
+      .txt:hover:not(:disabled) { background: #5c5e66; }
+      .clr { background: #3a3c41; }
+      .clr:hover:not(:disabled) { background: #4a4d52; }
+      .status {
+        font-size: 11px;
+        color: #f0b232;
+        margin-top: 8px;
+        min-height: 14px;
+      }
+      .hint {
+        font-size: 11px;
+        color: #949ba4;
+        margin-top: 6px;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="title"><span>Manual Export</span><span class="dot"></span></div>
+    <div class="count"><span class="n">—</span> <small>messages</small></div>
+    <button class="toggle go">Start capture</button>
+    <button class="dl">Download JSON</button>
+    <button class="txt">Download Text</button>
+    <button class="clr">Clear</button>
+    <div class="status"></div>
+    <div class="hint">
+      Open a channel and scroll it by hand — messages are captured as they appear.
+      Keep this popup open to watch the counter.
+    </div>
+    <script src="popup.js"></script>
+  </body>
+</html>

@@ -1,0 +1,20 @@
+{
+  "manifest_version": 3,
+  "name": "Discord Manual Export",
+  "version": "1.0.0",
+  "description": "Passively capture Discord messages as you scroll manually, then export to JSON or text. No automation, no network requests, no page injection, no special permissions.",
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "Manual Export"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "*://discord.com/*",
+        "*://*.discord.com/*"
+      ],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ]
+}
