@@ -108,7 +108,9 @@
   }
 
   function requestFiber() {
-    if (!fiberEnabled || !fiberPort) return;
+    // Only read while a capture is actively running, so enabling High-fidelity
+    // never reads message metadata before the user presses Start capture.
+    if (!capturing || !fiberEnabled || !fiberPort) return;
     try {
       fiberPort.postMessage({ cmd: "read" }); // private port only — never the window bus
     } catch (e) {}
@@ -517,6 +519,9 @@
   }
 
   function capture() {
+    // A debounced pass can still be queued when stop() runs; ignore it so Stop
+    // takes effect immediately and never captures after the observer is gone.
+    if (!capturing) return;
     // Channel changed under us (navigation) — stop rather than mix messages.
     if (captureCtx && channelKey() !== captureCtx.key) {
       stoppedReason = "channelChanged";
@@ -658,6 +663,7 @@
   function stop() {
     if (!capturing) return;
     capturing = false;
+    clearTimeout(debounceTimer); // cancel any capture already queued by the observer
     captureStoppedAt = new Date().toISOString();
     if (!stoppedReason) stoppedReason = "user";
     if (observer) observer.disconnect();
