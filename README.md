@@ -1,8 +1,12 @@
 # Discord Manual Export
 
+[![CI](https://github.com/JohnSalchichonGH/discord-manual-export/actions/workflows/ci.yml/badge.svg)](https://github.com/JohnSalchichonGH/discord-manual-export/actions/workflows/ci.yml)
+
 A tiny Chrome extension that captures Discord messages **as you scroll a channel by hand**, then exports them to JSON or a clean text transcript.
 
 It reads only what's already on your screen — no automation, no network requests, and no main-world page injection by default.
+
+<img src="docs/screenshot.png" alt="The Manual Export popup during a live capture: 342 messages in general, Stop capture, and JSON/Text/DCE export buttons" width="250" />
 
 ## Why it's safe
 

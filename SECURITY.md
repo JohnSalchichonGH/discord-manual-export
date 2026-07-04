@@ -31,4 +31,13 @@ Message content, display names, user IDs, @handles, avatar/media URLs, timestamp
 
 ## Enforcement
 
-[`check-safety.js`](check-safety.js) is a source-level guardrail (regex heuristic, run via `npm test`) that fails if a network/persistence/remote-code/privileged-API pattern appears in the shipped files. It is a regression guard, **not** a formal proof.
+[`check-safety.js`](check-safety.js) is a source-level guardrail (regex heuristic, run via `npm test`, and in CI on every push/PR) that fails if a network/persistence/remote-code/privileged-API pattern appears in the shipped files. It is a regression guard, **not** a formal proof.
+
+## Reporting a vulnerability
+
+If you find a security or privacy issue, please report it **privately** — don't open a public issue.
+
+- Preferred: GitHub's private vulnerability reporting — the **Security** tab → **Report a vulnerability** (opens a private advisory only the maintainer can see).
+- Please include what you found, how to reproduce it, and the impact you have in mind.
+
+Scope note: because the extension makes no network requests and stores nothing, the realistic issue classes are local (e.g. a way the capture could read more than the rendered DOM it's scoped to, or the High-fidelity reader leaking data off its private `MessagePort`). There's no server, backend, or hosted component to report against. This is a personal project with no SLA, but genuine reports will be looked at.
