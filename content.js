@@ -28,6 +28,12 @@
   function extractText(node) {
     if (!node) return "";
     const clone = node.cloneNode(true);
+    // Drop the "(edited)" indicator and any screen-reader-only text (Discord's
+    // hiddenVisually spans carry things like the edit-tooltip date and the
+    // "<guild>:" prefix in channel headers).
+    clone
+      .querySelectorAll('[class*="edited"], [class*="hiddenVisually"]')
+      .forEach((e) => e.remove());
     clone.querySelectorAll("img[alt]").forEach((img) => {
       img.replaceWith(document.createTextNode(img.getAttribute("alt") || ""));
     });
@@ -105,11 +111,22 @@
         const lbl = inner.getAttribute("aria-label") || inner.textContent || "";
         emoji = lbl.trim();
       }
+      // Custom-emoji reaction images embed the emoji id: /emojis/<id>.<ext>
+      let id = "";
+      let url = "";
+      if (img) {
+        const src = img.getAttribute("src") || "";
+        const m = src.match(/\/emojis\/(\d+)\./);
+        if (m) {
+          id = m[1];
+          url = src;
+        }
+      }
       const countEl = inner.querySelector('[class*="reactionCount"]');
       const count = countEl
         ? parseInt((countEl.textContent || "").replace(/\D/g, ""), 10) || 1
         : 1;
-      if (emoji) out.push({ emoji, count });
+      if (emoji) out.push({ emoji, count, id, url });
     });
     return out;
   }
@@ -123,10 +140,28 @@
     const contentEl =
       ctx.querySelector('[class*="repliedTextContent"]') ||
       ctx.querySelector('[class*="repliedTextPreview"]');
+    // The preview reuses the referenced message's own message-content-<id>
+    // element, so its id is the exact replied-to message id.
+    const idEl = ctx.querySelector('[id^="message-content-"]');
+    const messageId = idEl ? idEl.id.replace("message-content-", "") : null;
     const author = authEl ? extractText(authEl) : null;
     const content = contentEl ? extractText(contentEl) : null;
-    if (!author && !content) return null;
-    return { author, content };
+    if (!author && !content && !messageId) return null;
+    return { author, content, messageId };
+  }
+
+  // Reply previews load lazily; a message snapshotted too early shows a
+  // placeholder ("Message could not be loaded") or an unresolved "@unknown-user"
+  // mention. Score completeness so a later, fuller capture can replace it.
+  function replyScore(r) {
+    if (!r) return -1;
+    const c = (r.content || "").trim();
+    let s = 0;
+    if (r.messageId) s += 3; // the authoritative signal — weight it highest
+    if (r.author) s += 1;
+    if (c) s += 1;
+    if (c && !/could not be loaded|unknown-user/i.test(c)) s += 1;
+    return s;
   }
 
   // Attachments/media live in <div id="message-accessories-…">. We only trust
@@ -196,7 +231,17 @@
       consider("file", a.getAttribute("href"), a.getAttribute("title") || null)
     );
 
-    return [...byKey.values()];
+    let items = [...byKey.values()];
+    // A GIF embed yields both the real media file and its source-page link
+    // (e.g. klipy.com/gifs/x). If we captured an actual file, drop gif page links.
+    const MEDIA_EXT = /\.(mp4|webm|mov|gif|png|jpe?g|webp|apng)$/i;
+    const hasRealFile = items.some((i) => MEDIA_EXT.test(i.filename || ""));
+    if (hasRealFile) {
+      items = items.filter(
+        (i) => !(i.type === "gif" && !MEDIA_EXT.test(i.filename || ""))
+      );
+    }
+    return items;
   }
 
   function mediaTag(m) {
@@ -287,6 +332,12 @@
           existing.media = record.media;
         if (record.content && !existing.content)
           existing.content = record.content;
+        // Replace a placeholder/partial reply preview once the real one loads.
+        if (
+          record.replyTo &&
+          replyScore(record.replyTo) > replyScore(existing.replyTo)
+        )
+          existing.replyTo = record.replyTo;
       } else {
         store.set(id, record);
       }
@@ -405,7 +456,9 @@
       const titleEl =
         document.querySelector('[class*="title_"] h1') ||
         document.querySelector('h1[class*="title"]');
-      if (titleEl) name = titleEl.textContent.trim();
+      // extractText drops the hidden "<guild>:" accessibility prefix, leaving
+      // just the visible channel name.
+      if (titleEl) name = extractText(titleEl);
     }
     if (!name) name = document.title.replace(/^\(\d+\)\s*/, "").trim();
     return { id, name, url: location.href };
@@ -417,9 +470,36 @@
     );
   }
 
+  function pad2(n) {
+    return String(n).padStart(2, "0");
+  }
+
+  function todayStr() {
+    const d = new Date();
+    return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+  }
+
+  // Strip characters not allowed in filenames.
+  function sanitizeFilePart(s) {
+    return (s || "")
+      .replace(/[\\/:*?"<>|\r\n\t]+/g, "")
+      .replace(/\s+/g, " ")
+      .trim();
+  }
+
+  // DCE-style filename:
+  //   "<guild> - <category> - <channel> - <date> [<channelId>].<ext>"
+  //   DMs: "Direct Messages - <recipient> - <date> [<channelId>].<ext>"
   function exportName(ext) {
-    const ch = channelInfo();
-    return `discord-export-${ch.id || "channel"}-${Date.now()}.${ext}`;
+    const { guild, channel } = dceGuildChannel();
+    const isDm = guild.id === "0";
+    const parts = isDm
+      ? ["Direct Messages", channel.name]
+      : [guild.name, channel.category, channel.name];
+    const prefix =
+      parts.map(sanitizeFilePart).filter(Boolean).join(" - ") ||
+      "discord-export";
+    return `${prefix} - ${todayStr()} [${channel.id || "channel"}].${ext}`;
   }
 
   // The documented, clean shape (excludes internal-only fields like avatarUrl).
@@ -473,11 +553,22 @@
         },
       };
     }
+    // Best-effort guild name from the sidebar header. Avoid the channel header
+    // (which holds the channel name) by rejecting a value equal to ch.name.
     let guildName = "";
-    const gEl =
-      document.querySelector('[class*="header"] h1') ||
-      document.querySelector('[data-list-item-id^="guildsnav"] [class*="name"]');
-    if (gEl) guildName = gEl.textContent.trim();
+    const gCandidates = [
+      '[class*="headerContent"]',
+      '[class*="guildName"]',
+      '[class*="nameAndDecorators"]',
+    ];
+    for (const s of gCandidates) {
+      const el = document.querySelector(s);
+      const t = el ? el.textContent.trim() : "";
+      if (t && t !== (ch.name || "")) {
+        guildName = t;
+        break;
+      }
+    }
     return {
       guild: { id: guildId, name: guildName, iconUrl: "" },
       channel: {
@@ -492,9 +583,16 @@
   }
 
   function dceEmoji(r) {
-    // r.emoji is a unicode char or ":name:" for custom emoji.
+    // r.emoji is a unicode char or ":name:" for custom emoji; id/url come from
+    // the reaction image when it's a custom emoji.
     const name = r.emoji.replace(/^:|:$/g, "");
-    return { id: "", name, code: "", isAnimated: false, imageUrl: "" };
+    return {
+      id: r.id || "",
+      name,
+      code: "",
+      isAnimated: /\.gif(\?|$)/i.test(r.url || ""),
+      imageUrl: r.url || "",
+    };
   }
 
   function dceMessage(r, guildId, channelId, usernameMap) {
@@ -577,7 +675,9 @@
     const messages = records.map((r) => {
       const msg = dceMessage(r, guild.id, channel.id, usernameMap);
       if (msg.reference)
-        msg.reference.messageId = resolveReferenceId(r, records);
+        // Prefer the exact id read from the reply preview; fall back to matching.
+        msg.reference.messageId =
+          (r.replyTo && r.replyTo.messageId) || resolveReferenceId(r, records);
       return msg;
     });
     return JSON.stringify(
