@@ -30,6 +30,9 @@
   // exports use the CAPTURED channel's metadata, not whatever URL is live now.
   let captureCtx = null; // { key, channel, guildChannel } snapshot at start
   let storeChannelKey = null; // channel the store's messages belong to
+  let captureStartedAt = null;
+  let captureStoppedAt = null;
+  let stoppedReason = null; // "user" | "channelChanged"
 
   function channelKey() {
     const m = location.pathname.match(/channels\/([^/]+)\/([^/]+)/);
@@ -95,33 +98,19 @@
       } catch (er) {}
       // One data-less, random-keyed handshake hands the reader its port.
       window.postMessage({ k: fiberNonce, h: 1 }, location.origin, [fiberChannel.port2]);
-      // If the port never answers, THEN (and only then) fall back to the window
-      // bus — so real data is never broadcast while the private port is working.
+      // Fail closed: if the private port never answers, high-fidelity is simply
+      // unavailable on this tab. We never fall back to putting data on the bus.
       clearTimeout(fiberTimer);
       fiberTimer = setTimeout(() => {
-        if (fiberEnabled && !portConfirmed) {
-          portFailed = true;
-          requestFiber();
-        }
+        if (fiberEnabled && !portConfirmed) portFailed = true;
       }, 800);
     } catch (e) {}
   }
 
   function requestFiber() {
-    if (!fiberEnabled || !fiberNonce) return;
+    if (!fiberEnabled || !fiberPort) return;
     try {
-      if (fiberPort) {
-        try {
-          fiberPort.postMessage({ cmd: "read" });
-        } catch (e) {}
-      }
-      // Window bus is used ONLY after the private port is confirmed to have
-      // failed — otherwise no export data ever touches the shared bus.
-      if (portFailed && !portConfirmed) {
-        try {
-          window.postMessage({ k: fiberNonce, cmd: "read" }, location.origin);
-        } catch (e) {}
-      }
+      fiberPort.postMessage({ cmd: "read" }); // private port only — never the window bus
     } catch (e) {}
   }
 
@@ -144,19 +133,8 @@
     fiberNonce = null;
   }
 
-  // Fallback receive path: reader responses over the window bus, used only if the
-  // private port didn't come through. Nonce-keyed; anything else is ignored.
-  window.addEventListener("message", (ev) => {
-    try {
-      if (ev.source !== window || !fiberNonce) return;
-      // Only accept data over the window bus while the fallback is actually
-      // active — otherwise page code that observed the nonce could spoof data.
-      if (!portFailed || portConfirmed) return;
-      const d = ev.data;
-      if (!d || d.k !== fiberNonce) return;
-      if (Array.isArray(d.r)) mergeFiber(d.r);
-    } catch (e) {}
-  });
+  // (No window-bus receive path: fiber data only ever arrives over the private
+  // MessagePort, so no export data touches the shared window message bus.)
 
   /* ---------------- extraction helpers ---------------- */
 
@@ -541,6 +519,7 @@
   function capture() {
     // Channel changed under us (navigation) — stop rather than mix messages.
     if (captureCtx && channelKey() !== captureCtx.key) {
+      stoppedReason = "channelChanged";
       stop();
       return;
     }
@@ -650,6 +629,9 @@
     storeChannelKey = key;
     captureCtx = null; // so the snapshot below reads live channel info
     capturing = true;
+    captureStartedAt = new Date().toISOString();
+    captureStoppedAt = null;
+    stoppedReason = null;
     capture();
     captureCtx = { key, channel: channelInfo(), guildChannel: dceGuildChannel() };
     const list = getList();
@@ -662,7 +644,10 @@
   }
 
   function stop() {
+    if (!capturing) return;
     capturing = false;
+    captureStoppedAt = new Date().toISOString();
+    if (!stoppedReason) stoppedReason = "user";
     if (observer) observer.disconnect();
     observer = null;
   }
@@ -845,6 +830,36 @@
     };
   }
 
+  // Export diagnostics so the user can see what might be incomplete.
+  function captureDiagnostics(messages) {
+    const replies = messages.filter((m) => m.replyTo);
+    const resolved = replies.filter((m) => m.replyTo && m.replyTo.messageId).length;
+    const missingAuthor = messages.filter((m) => !m.author).length;
+    const warnings = [];
+    if (missingAuthor)
+      warnings.push(
+        `${missingAuthor} message(s) had no visible author — scroll over the group header and recapture, or enable High-fidelity.`
+      );
+    const h = healthCheck();
+    if (h) warnings.push(h);
+    return {
+      rawCapturedCount: store.size,
+      exportedMessageCount: messages.length,
+      systemMessagesSkipped: store.size - messages.length,
+      missingAuthorCount: missingAuthor,
+      missingTimestampCount: messages.filter((m) => !m.timestamp).length,
+      replyLinksResolved: resolved,
+      replyLinksUnresolved: replies.length - resolved,
+      highFidelityEnabled: fiberEnabled,
+      highFidelityTransport: fiberTransport(),
+      mediaUrlCount: messages.reduce(
+        (n, m) => n + ((m.media && m.media.length) || 0),
+        0
+      ),
+      warnings,
+    };
+  }
+
   function buildJsonString() {
     const messages = sortedMessages().map((r) => {
       const c = cleanMessage(r);
@@ -860,6 +875,13 @@
       {
         channel: channelInfo(),
         capturedAt: new Date().toISOString(),
+        session: {
+          startedAt: captureStartedAt,
+          stoppedAt: captureStoppedAt,
+          channelKey: captureCtx ? captureCtx.key : channelKey(),
+          stoppedReason,
+        },
+        captureQuality: captureDiagnostics(messages),
         messageCount: messages.length,
         messages,
       },
@@ -1179,10 +1201,33 @@
 
   /* ---------------- popup messaging ---------------- */
 
+  // High-fidelity transport state, surfaced so the popup never silently degrades.
+  function fiberTransport() {
+    if (!fiberEnabled) return "off";
+    if (portConfirmed) return "MessagePort";
+    if (portFailed) return "unavailable";
+    return "connecting";
+  }
+
+  // Detect likely DOM breakage so the popup can warn instead of sitting at zero.
+  function healthCheck() {
+    const list = getList();
+    if (!list) return "No Discord message list found — open a channel.";
+    if (list.querySelectorAll('li[id^="chat-messages-"]').length === 0)
+      return "Message list found but no message nodes — Discord's DOM may have changed.";
+    return null;
+  }
+
   function state() {
     // Count what will actually export (system messages are filtered out).
     const count = [...store.values()].filter((r) => !isSystemMessage(r)).length;
-    return { capturing, count, fiber: fiberEnabled };
+    return {
+      capturing,
+      count,
+      fiber: fiberEnabled,
+      fiberStatus: fiberTransport(),
+      warning: healthCheck(),
+    };
   }
 
   chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {

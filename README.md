@@ -18,8 +18,23 @@ A toggle in the popup that reads Discord's own in-page data (React state) to add
 - It injects a small **read-only** script into the page **only while the toggle is on** (off = nothing in the page, same as the default).
 - It makes **no network requests** and **patches nothing** — it only reads state Discord already loaded.
 - It's written so it can **never** surface an error into Discord's telemetry (every path is wrapped; it never throws or logs).
-- **Data flows over a private `MessagePort`.** No export data is broadcast over repeated `window.postMessage`; the only thing on the shared bus is a **single, data-less handshake** keyed by a **random per-session nonce** (no static marker). Honest caveat: that handshake transfers the port, which is briefly exposed in the event's `ports` to any `message` listener — so this hides the data from *passive/ordinary* listeners, but it is **not** a hard confidentiality boundary against page code that specifically hooks transferred ports. Real data only touches the window bus at all if the cross-world port transfer fails (a timeout-gated fallback).
+- **Data flows over a private `MessagePort`, and only that.** No export data ever touches the shared `window` bus; the only thing on it is a **single, data-less handshake** keyed by a **random per-session nonce** (no static marker). If the cross-world port transfer fails, high-fidelity is simply reported **unavailable on that tab (fail closed)** and DOM-only capture continues — it never falls back to putting data on the window bus. Honest caveat: the handshake transfers the port, which is briefly exposed in the event's `ports` to any `message` listener, so this hides the *data* from passive listeners but isn't a hard boundary against page code that specifically hooks transferred ports.
 - Trade-off vs. the pure-DOM default: it runs in the page context, sharing Discord's JS environment. That's low-signal and non-specific in practice, but **not** the hard isolated-world guarantee of the default — anything Discord has already instrumented in the page (e.g. wrapped `addEventListener`) could in principle observe corresponding behavior, and it's more fragile to Discord front-end updates. **DOM-only (toggle off) remains the lowest-surface mode.**
+
+## Safety contract
+
+This extension will **never**:
+
+- read Discord auth tokens or account credentials
+- call Discord's API, or make **any** network request
+- patch `fetch` / `XHR` / `WebSocket`, or other page APIs
+- auto-scroll, auto-click, or bypass rate limits
+- upload exports, send telemetry, or load remote code
+- persist captured messages anywhere except a file **you** download
+
+This is enforced in code: [`check-safety.js`](check-safety.js) fails if any network / persistence / remote-code API appears in the scripts. Run it with `node check-safety.js` (or `npm test`).
+
+Exports may contain private messages, user IDs, media URLs, timestamps, reactions, and reply relationships. Only export conversations you have permission to keep, and don't redistribute other people's messages.
 
 ## Install
 

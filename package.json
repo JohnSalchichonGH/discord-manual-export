@@ -1,0 +1,9 @@
+{
+  "name": "discord-manual-export",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Local-only Chrome extension that exports Discord messages you scroll through by hand.",
+  "scripts": {
+    "test": "node check-safety.js"
+  }
+}

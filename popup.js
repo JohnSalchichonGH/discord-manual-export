@@ -43,16 +43,25 @@ function render(st) {
     $(".n").textContent = "—";
     $(".dot").classList.remove("on");
     $(".status").textContent = "Open a Discord tab to use this.";
+    $(".fiberStatus").textContent = "";
     controls.forEach((s) => ($(s).disabled = true));
     return;
   }
-  $(".status").textContent = "";
   controls.forEach((s) => ($(s).disabled = false));
   $(".n").textContent = st.count;
   $(".dot").classList.toggle("on", st.capturing);
   toggle.textContent = st.capturing ? "Stop capture" : "Start capture";
   toggle.className = "toggle " + (st.capturing ? "stop" : "go");
   $(".fiber").checked = !!st.fiber;
+  $(".status").textContent = st.warning || "";
+  const transport = {
+    MessagePort: "✓ via private channel",
+    unavailable: "unavailable on this tab (DOM-only still active)",
+    connecting: "connecting…",
+  };
+  $(".fiberStatus").textContent = st.fiber
+    ? transport[st.fiberStatus] || ""
+    : "";
 }
 
 async function refresh() {
@@ -94,10 +103,10 @@ $(".fiber").addEventListener("change", async (e) => {
       });
     } catch (err) {
       e.target.checked = false;
-      $(".status").textContent = "Couldn't enable high-fidelity on this tab.";
+      $(".fiberStatus").textContent = "Couldn't enable high-fidelity on this tab.";
       return;
     }
-    $(".status").textContent = "";
+    $(".fiberStatus").textContent = "connecting…";
     const st = await sendMsg({ type: "setFiber", on: true, nonce });
     if (st) render(st);
   } else {

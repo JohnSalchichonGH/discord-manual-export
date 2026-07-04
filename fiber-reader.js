@@ -157,7 +157,8 @@ function fiberReaderMain(nonce) {
       } catch (e) {}
     }
 
-    // Window bus: only the one-time handshake, plus nonce-keyed fallback requests.
+    // Window bus is used ONLY to receive the one-time port handshake (and a
+    // disable signal). Data is NEVER sent back over the window — only the port.
     function onWin(ev) {
       try {
         if (ev.source !== window) return;
@@ -165,12 +166,6 @@ function fiberReaderMain(nonce) {
         if (!d || d.k !== nonce) return;
         if (d.h && ev.ports && ev.ports[0]) {
           adoptPort(ev.ports[0]);
-          return;
-        }
-        if (d.cmd === "read") {
-          try {
-            window.postMessage({ k: nonce, r: readVisible() }, location.origin);
-          } catch (e2) {}
         } else if (d.cmd === "disable") {
           teardown();
         }
