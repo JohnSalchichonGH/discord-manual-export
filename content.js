@@ -25,6 +25,15 @@
   let observer = null;
   let debounceTimer = null;
   let capturing = false;
+  // Bind capture to one channel so navigating away can't mix channels, and so
+  // exports use the CAPTURED channel's metadata, not whatever URL is live now.
+  let captureCtx = null; // { key, channel, guildChannel } snapshot at start
+  let storeChannelKey = null; // channel the store's messages belong to
+
+  function channelKey() {
+    const m = location.pathname.match(/channels\/([^/]+)\/([^/]+)/);
+    return m ? m[1] + "/" + m[2] : location.href;
+  }
 
   // Opt-in high-fidelity layer: the MAIN-world fiber reader (injected by the
   // popup only when enabled) returns richer per-message data. Data flows over a
@@ -42,7 +51,7 @@
     for (const fm of arr) {
       if (!fm || !fm.id) continue;
       const ex = fiberStore.get(fm.id) || {};
-      ["referenceId", "username", "globalName", "discriminator", "editedTimestamp"].forEach(
+      ["referenceId", "authorId", "username", "discriminator", "editedTimestamp"].forEach(
         (k) => {
           if (fm[k]) ex[k] = fm[k];
         }
@@ -132,6 +141,9 @@
   window.addEventListener("message", (ev) => {
     try {
       if (ev.source !== window || !fiberNonce) return;
+      // Only accept data over the window bus while the fallback is actually
+      // active — otherwise page code that observed the nonce could spoof data.
+      if (!portFailed || portConfirmed) return;
       const d = ev.data;
       if (!d || d.k !== fiberNonce) return;
       if (Array.isArray(d.r)) mergeFiber(d.r);
@@ -515,6 +527,11 @@
   }
 
   function capture() {
+    // Channel changed under us (navigation) — stop rather than mix messages.
+    if (captureCtx && channelKey() !== captureCtx.key) {
+      stop();
+      return;
+    }
     const list = getList();
     if (!list) return;
     const items = list.querySelectorAll('li[id^="chat-messages-"]');
@@ -570,10 +587,15 @@
         if (record.isSystem) existing.isSystem = true;
         if (!existing.timestamp && record.timestamp)
           existing.timestamp = record.timestamp;
-        if (record.reactions.length) existing.reactions = record.reactions;
+        // Reactions reflect current state (incl. removals) — overwrite.
+        existing.reactions = record.reactions;
         if (record.media.length && !existing.media.length)
           existing.media = record.media;
-        if (!existing.editedTimestamp && record.editedTimestamp)
+        // If the message was edited since we captured it, refresh content + time.
+        const wasEdited =
+          record.editedTimestamp &&
+          record.editedTimestamp !== existing.editedTimestamp;
+        if (record.editedTimestamp)
           existing.editedTimestamp = record.editedTimestamp;
         if (record.stickers.length && !existing.stickers.length)
           existing.stickers = record.stickers;
@@ -581,7 +603,7 @@
           existing.embeds = record.embeds;
         if (record.mentions.length && !existing.mentions.length)
           existing.mentions = record.mentions;
-        if (record.content && !existing.content)
+        if (record.content && (wasEdited || !existing.content))
           existing.content = record.content;
         // Replace a placeholder/partial reply preview once the real one loads.
         if (
@@ -604,8 +626,17 @@
 
   function start() {
     if (capturing) return;
+    const key = channelKey();
+    // Starting in a different channel than the stored data? Clear to avoid mixing.
+    if (storeChannelKey && storeChannelKey !== key) {
+      store.clear();
+      fiberStore.clear();
+    }
+    storeChannelKey = key;
+    captureCtx = null; // so the snapshot below reads live channel info
     capturing = true;
     capture();
+    captureCtx = { key, channel: channelInfo(), guildChannel: dceGuildChannel() };
     const list = getList();
     const target =
       (list && (list.closest('[class*="scroller"]') || list.parentElement)) ||
@@ -698,6 +729,7 @@
   }
 
   function channelInfo() {
+    if (captureCtx && captureCtx.channel) return captureCtx.channel; // captured snapshot
     const parts = location.pathname.match(/channels\/([^/]+)\/([^/]+)/);
     const guildId = parts ? parts[1] : null;
     const id = parts ? parts[2] : null;
@@ -721,7 +753,13 @@
   // System/notification messages (pins, joins, boosts, …) — dropped from exports.
   // Authoritative signal is the numeric message type (from the fiber reader);
   // a DOM class is the fallback when high-fidelity is off.
-  const SYSTEM_TYPES = new Set([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 14, 15, 18, 22, 24]);
+  // Known system/notification types. Content types (0 Default, 19 Reply,
+  // 20 ChatInputCommand, 21 ThreadStarterMessage, 23 ContextMenuCommand) are kept;
+  // unknown types are kept too (better than dropping a future content type).
+  const SYSTEM_TYPES = new Set([
+    1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 14, 15, 16, 17, 18, 22, 24, 25, 26, 27,
+    28, 29, 31, 32, 36, 37, 38, 39, 44, 46,
+  ]);
 
   function isSystemMessage(r) {
     if (r.isSystem) return true;
@@ -792,6 +830,7 @@
       const fib = fiberStore.get(r.id);
       if (fib) {
         if (fib.username) c.username = fib.username;
+        if (fib.authorId) c.authorId = fib.authorId;
         if (fib.referenceId && c.replyTo) c.replyTo.messageId = fib.referenceId;
       }
       return c;
@@ -809,11 +848,14 @@
   }
 
   /* ---------------- DiscordChatExporter-compatible JSON ----------------
-   * Matches DCE's schema so the file drops into tools that read DCE exports.
-   * Fields the rendered page can't provide (author.id, attachment ids/sizes,
-   * reference.messageId, embeds, exact edited time) are left empty/null. */
+   * Best-effort match of DCE's schema so the file drops into tools that read
+   * DCE exports. Most fields come from the DOM (plus the fiber reader when the
+   * High-fidelity toggle is on). Attachment ids/sizes are the main things still
+   * left empty; author ids, @handles, reply ids, embeds, stickers, and edit
+   * times are filled where available. */
 
   function dceGuildChannel() {
+    if (captureCtx && captureCtx.guildChannel) return captureCtx.guildChannel; // snapshot
     const m = location.pathname.match(/channels\/([^/]+)\/([^/]+)/);
     const guildId = m ? m[1] : "";
     const channelId = m ? m[2] : "";
@@ -898,7 +940,7 @@
       isPinned: false,
       content: r.content || "",
       author: {
-        id: r.authorId || "",
+        id: (fib && fib.authorId) || r.authorId || "",
         name: username,
         discriminator: (fib && fib.discriminator) || "0000",
         nickname: display,

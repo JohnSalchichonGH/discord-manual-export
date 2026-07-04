@@ -9,7 +9,7 @@ It reads only what's already on your screen — no automation, no network reques
 - **Nothing is sent anywhere.** Messages stay in memory until *you* export them to a local file.
 - **No automation.** You scroll; it just watches. Same footprint as reading the channel normally.
 - **No page injection** (by default). The UI lives entirely in the toolbar popup — nothing is added to Discord's page.
-- **Minimal permissions.** Only `scripting` + `activeTab`, used solely by the opt-in High-fidelity toggle below. With it off, the extension is pure read-the-DOM and nothing extra runs.
+- **Minimal permissions.** Only `scripting` + `activeTab` (used solely by the opt-in High-fidelity toggle below), plus a content script limited to Discord pages. With the toggle off, the extension is pure read-the-DOM and nothing extra runs.
 
 ## High-fidelity mode (optional, off by default)
 
@@ -74,7 +74,7 @@ The counter updates live while the popup is open, and capture keeps running in t
 
 A `=== date ===` header is emitted per day; the first message of a day shows an absolute time, later ones a relative delta (`+4s`, `+1m`, `+2h`). Same-author runs are grouped; replies quote the original; media becomes `[IMG]` / `[VIDEO]` / `[GIF]` / `[FILE]`.
 
-**DCE JSON** — matches [DiscordChatExporter](https://github.com/Tyrrrz/DiscordChatExporter)'s schema, so it drops into tools that read DCE exports. Includes role colors (`author.color`) in servers. Fields the page can't provide (attachment sizes, embeds) are left empty. Reply links resolve only when the replied-to message was also captured.
+**DCE JSON** — a best-effort match of [DiscordChatExporter](https://github.com/Tyrrrz/DiscordChatExporter)'s schema, so it drops into tools that read DCE exports (test against your consumer). Includes role colors, embeds, stickers, and mentions. Attachment sizes/ids are left empty. Reply links resolve from the DOM, and exactly — including replies to media — in High-fidelity mode.
 
 ## Notes
 

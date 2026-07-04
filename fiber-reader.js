@@ -86,8 +86,8 @@ function fiberReaderMain(nonce) {
           id: String(m.id),
           type: typeof m.type === "number" ? m.type : null,
           referenceId: refId ? String(refId) : null,
+          authorId: a.id ? String(a.id) : null,
           username: a.username || null,
-          globalName: a.globalName || a.global_name || null,
           discriminator: a.discriminator || null,
           editedTimestamp: isoOrNull(m.editedTimestamp),
         };
