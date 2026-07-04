@@ -50,6 +50,41 @@
     return null;
   }
 
+  function getAvatarUrl(li) {
+    const imgs = li.querySelectorAll('img[class*="avatar"]');
+    for (const img of imgs) {
+      if (isInReplyContext(img)) continue;
+      const src = img.getAttribute("src");
+      if (src) return src;
+    }
+    return null;
+  }
+
+  // Role color is an inline color on the name element (only set for colored
+  // roles). Convert Discord's "rgb(r, g, b)" to the hex DCE expects, else null.
+  function rgbToHex(rgb) {
+    const m = (rgb || "").match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/);
+    if (!m) return null;
+    const h = (n) => Number(n).toString(16).padStart(2, "0");
+    return "#" + h(m[1]) + h(m[2]) + h(m[3]);
+  }
+
+  function getRoleColor(authEl) {
+    return authEl && authEl.style ? rgbToHex(authEl.style.color) : null;
+  }
+
+  // Custom-avatar URLs embed the numeric user id:
+  //   cdn.discordapp.com/avatars/<userId>/<hash>.webp
+  //   cdn.discordapp.com/guilds/<gid>/users/<userId>/avatars/<hash>.webp
+  // Default avatars (embed/avatars/<n>.png) carry no id, so this returns null.
+  function userIdFromAvatar(url) {
+    if (!url) return null;
+    let m = url.match(/\/users\/(\d+)\/avatars\//);
+    if (m) return m[1];
+    m = url.match(/\/avatars\/(\d+)\//);
+    return m ? m[1] : null;
+  }
+
   function getTimestamp(li) {
     const times = li.querySelectorAll("time[datetime]");
     for (const t of times) {
@@ -97,6 +132,7 @@
   // Attachments/media live in <div id="message-accessories-…">. We only trust
   // Discord's own CDN/proxy hosts, which filters out UI icons and external links.
   const MEDIA_HOST = /(^|\.)discordapp\.(com|net)$/;
+  const GIF_HOST = /(^|\.)(tenor|giphy|klipy|gfycat)\.com$/;
 
   function fileNameFromUrl(u) {
     try {
@@ -112,25 +148,35 @@
     const acc = li.querySelector('[id^="message-accessories-"]');
     if (!acc) return [];
     const byKey = new Map(); // dedupe by URL pathname (proxy + original are one file)
-    const prio = { video: 3, image: 2, file: 1 };
+    const prio = { gif: 4, video: 3, image: 2, file: 1 };
 
-    const consider = (type, rawUrl, filename) => {
-      if (!rawUrl) return;
+    const consider = (elType, rawUrl, filename) => {
+      if (!rawUrl || rawUrl.startsWith("data:")) return; // skip lazy-load placeholders
       let url;
       try {
         url = new URL(rawUrl, location.href);
       } catch (e) {
         return;
       }
-      if (!MEDIA_HOST.test(url.hostname)) return;
+      const isUpload =
+        MEDIA_HOST.test(url.hostname) &&
+        /\/(attachments|stickers)\//.test(url.pathname);
+      const isGif = GIF_HOST.test(url.hostname);
+      // Trust real Discord uploads, known GIF hosts, or any actual <video>. This
+      // skips link-preview thumbnails, avatars, and emoji while catching media.
+      if (!isUpload && !isGif && elType !== "video") return;
+
+      const type = isGif ? "gif" : elType;
       const key = url.pathname;
-      const fname = filename || fileNameFromUrl(rawUrl);
+      // Prefer the real filename from the URL path — Discord's <img alt> is a
+      // generic "Image", so trusting it would drop the extension.
+      const fname = fileNameFromUrl(rawUrl) || filename;
       const existing = byKey.get(key);
       if (!existing) {
         byKey.set(key, { type, url: rawUrl, filename: fname });
         return;
       }
-      if (prio[type] > prio[existing.type]) existing.type = type;
+      if ((prio[type] || 0) > (prio[existing.type] || 0)) existing.type = type;
       if (
         /cdn\.discordapp\.com/.test(rawUrl) &&
         !/cdn\.discordapp\.com/.test(existing.url)
@@ -154,6 +200,7 @@
   }
 
   function mediaTag(m) {
+    if (m.type === "gif") return "[GIF]";
     if (m.type === "image") return "[IMG]";
     if (m.type === "video") return "[VIDEO]";
     if (m.type === "file") return "[FILE]";
@@ -190,10 +237,21 @@
     if (!list) return;
     const items = list.querySelectorAll('li[id^="chat-messages-"]');
     let currentAuthor = null;
+    let currentAuthorId = null;
+    let currentAvatar = null;
+    let currentColor = null;
+    let currentIsBot = false;
 
     items.forEach((li) => {
       const authEl = getAuthorEl(li);
-      if (authEl) currentAuthor = extractText(authEl);
+      if (authEl) {
+        // Group leader: refresh the author details carried to grouped follow-ups.
+        currentAuthor = extractText(authEl);
+        currentAvatar = getAvatarUrl(li);
+        currentAuthorId = userIdFromAvatar(currentAvatar);
+        currentColor = getRoleColor(authEl);
+        currentIsBot = !!li.querySelector('[class*="botTag"]');
+      }
 
       const contentEl = getContentEl(li);
       const id = getMessageId(li, contentEl);
@@ -202,6 +260,10 @@
       const record = {
         id,
         author: currentAuthor,
+        authorId: currentAuthorId,
+        avatarUrl: currentAvatar,
+        color: currentColor,
+        isBot: currentIsBot,
         timestamp: getTimestamp(li),
         content: contentEl ? extractText(contentEl) : "",
         media: getMedia(li),
@@ -212,6 +274,12 @@
       const existing = store.get(id);
       if (existing) {
         if (!existing.author && record.author) existing.author = record.author;
+        if (!existing.authorId && record.authorId)
+          existing.authorId = record.authorId;
+        if (!existing.avatarUrl && record.avatarUrl)
+          existing.avatarUrl = record.avatarUrl;
+        if (!existing.color && record.color) existing.color = record.color;
+        if (record.isBot) existing.isBot = true;
         if (!existing.timestamp && record.timestamp)
           existing.timestamp = record.timestamp;
         if (record.reactions.length) existing.reactions = record.reactions;
@@ -255,15 +323,90 @@
 
   /* ---------------- export builders (return strings; popup saves them) ---------------- */
 
+  // Discord's message header renders the DISPLAY name, not the account username.
+  // The real @handle only appears in a few places (DM header, account panel),
+  // which we scrape here to fill author.name. Everything is local DOM reading.
+  const HANDLE_RE = /^[a-z0-9._]{2,32}$/;
+
+  // Text of every leaf element under `el`, in document order.
+  function leafTexts(el) {
+    const out = [];
+    el.querySelectorAll("*").forEach((n) => {
+      if (n.children.length === 0) {
+        const t = n.textContent.trim();
+        if (t) out.push(t);
+      }
+    });
+    if (!out.length) {
+      const t = el.textContent.trim();
+      if (t) out.push(t);
+    }
+    return out;
+  }
+
+  // From a [displayName, handle, ...maybe status] leaf list, split the two.
+  function splitNameHandle(leaves) {
+    const displayName = leaves[0] || null;
+    let username = null;
+    for (let i = 1; i < leaves.length; i++) {
+      if (HANDLE_RE.test(leaves[i]) && leaves[i] !== displayName) {
+        username = leaves[i];
+        break;
+      }
+    }
+    return { displayName, username };
+  }
+
+  function dmHeaderInfo() {
+    const sels = [
+      '[class*="titleWrapper"]',
+      '[class*="title_"]',
+      'section[class*="title"]',
+    ];
+    let fallback = null;
+    for (const s of sels) {
+      const el = document.querySelector(s);
+      if (!el) continue;
+      const info = splitNameHandle(leafTexts(el));
+      if (info.displayName && info.username) return info; // got both — best
+      if (info.displayName && !fallback) fallback = info;
+    }
+    return fallback;
+  }
+
+  function accountPanelInfo() {
+    const panel =
+      document.querySelector('[class*="panels_"]') ||
+      document.querySelector('section[class*="panels"]');
+    if (!panel) return null;
+    const info = splitNameHandle(leafTexts(panel));
+    return info.displayName ? info : null;
+  }
+
+  // displayName -> username, from the DM recipient and the logged-in account.
+  function buildUsernameMap() {
+    const map = new Map();
+    [dmHeaderInfo(), accountPanelInfo()].forEach((info) => {
+      if (info && info.username) map.set(info.displayName, info.username);
+    });
+    return map;
+  }
+
   function channelInfo() {
-    const m = location.pathname.match(/channels\/([^/]+)\/([^/]+)/);
-    const id = m ? m[2] : null;
+    const parts = location.pathname.match(/channels\/([^/]+)\/([^/]+)/);
+    const guildId = parts ? parts[1] : null;
+    const id = parts ? parts[2] : null;
     let name = null;
-    const titleEl =
-      document.querySelector('[class*="title_"] h1') ||
-      document.querySelector('h1[class*="title"]') ||
-      document.querySelector('[class*="titleWrapper"]');
-    if (titleEl) name = titleEl.textContent.trim();
+    if (guildId === "@me") {
+      const dm = dmHeaderInfo();
+      if (dm) name = dm.displayName; // just the display name, not name+handle
+    }
+    if (!name) {
+      const titleEl =
+        document.querySelector('[class*="title_"] h1') ||
+        document.querySelector('h1[class*="title"]');
+      if (titleEl) name = titleEl.textContent.trim();
+    }
     if (!name) name = document.title.replace(/^\(\d+\)\s*/, "").trim();
     return { id, name, url: location.href };
   }
@@ -279,14 +422,172 @@
     return `discord-export-${ch.id || "channel"}-${Date.now()}.${ext}`;
   }
 
+  // The documented, clean shape (excludes internal-only fields like avatarUrl).
+  function cleanMessage(r) {
+    return {
+      id: r.id,
+      author: r.author,
+      authorId: r.authorId,
+      timestamp: r.timestamp,
+      content: r.content,
+      media: r.media,
+      reactions: r.reactions,
+      replyTo: r.replyTo,
+    };
+  }
+
   function buildJsonString() {
-    const messages = sortedMessages();
+    const messages = sortedMessages().map(cleanMessage);
     return JSON.stringify(
       {
         channel: channelInfo(),
         capturedAt: new Date().toISOString(),
         messageCount: messages.length,
         messages,
+      },
+      null,
+      2
+    );
+  }
+
+  /* ---------------- DiscordChatExporter-compatible JSON ----------------
+   * Matches DCE's schema so the file drops into tools that read DCE exports.
+   * Fields the rendered page can't provide (author.id, attachment ids/sizes,
+   * reference.messageId, embeds, exact edited time) are left empty/null. */
+
+  function dceGuildChannel() {
+    const m = location.pathname.match(/channels\/([^/]+)\/([^/]+)/);
+    const guildId = m ? m[1] : "";
+    const channelId = m ? m[2] : "";
+    const ch = channelInfo();
+    if (guildId === "@me") {
+      return {
+        guild: { id: "0", name: "Direct Messages", iconUrl: "" },
+        channel: {
+          id: channelId,
+          type: "DirectTextChat",
+          categoryId: "",
+          category: "",
+          name: ch.name || "",
+          topic: null,
+        },
+      };
+    }
+    let guildName = "";
+    const gEl =
+      document.querySelector('[class*="header"] h1') ||
+      document.querySelector('[data-list-item-id^="guildsnav"] [class*="name"]');
+    if (gEl) guildName = gEl.textContent.trim();
+    return {
+      guild: { id: guildId, name: guildName, iconUrl: "" },
+      channel: {
+        id: channelId,
+        type: "GuildTextChat",
+        categoryId: "",
+        category: "",
+        name: ch.name || "",
+        topic: null,
+      },
+    };
+  }
+
+  function dceEmoji(r) {
+    // r.emoji is a unicode char or ":name:" for custom emoji.
+    const name = r.emoji.replace(/^:|:$/g, "");
+    return { id: "", name, code: "", isAnimated: false, imageUrl: "" };
+  }
+
+  function dceMessage(r, guildId, channelId, usernameMap) {
+    const display = r.author || "";
+    // name = account @handle (from DM header / account panel), nickname = display
+    // name shown in the chat. Falls back to the display name when no handle known.
+    const username = (usernameMap && usernameMap.get(display)) || display;
+    return {
+      id: r.id,
+      type: r.replyTo ? "Reply" : "Default",
+      timestamp: r.timestamp,
+      timestampEdited: null,
+      callEndedTimestamp: null,
+      isPinned: false,
+      content: r.content || "",
+      author: {
+        id: r.authorId || "",
+        name: username,
+        discriminator: "0000",
+        nickname: display,
+        color: r.color || null,
+        isBot: !!r.isBot,
+        avatarUrl: r.avatarUrl || "",
+      },
+      attachments: (r.media || []).map((mm) => ({
+        id: "",
+        url: mm.url || "",
+        fileName: mm.filename || "",
+        fileSizeBytes: 0,
+      })),
+      embeds: [],
+      stickers: [],
+      reactions: (r.reactions || []).map((rc) => ({
+        emoji: dceEmoji(rc),
+        count: rc.count,
+      })),
+      mentions: [],
+      reference: r.replyTo
+        ? { messageId: "", channelId, guildId }
+        : null,
+    };
+  }
+
+  // Discord doesn't put the referenced message's id in the DOM. If the replied-to
+  // message was itself captured, resolve the link locally by matching the reply
+  // preview (author + text) against earlier messages. Purely local, no network.
+  function normText(s) {
+    return (s || "").replace(/\s+/g, " ").trim();
+  }
+  function normAuthor(s) {
+    return (s || "").replace(/^@/, "").trim();
+  }
+
+  function resolveReferenceId(rec, all) {
+    if (!rec.replyTo) return "";
+    const who = normAuthor(rec.replyTo.author);
+    let preview = normText(rec.replyTo.content).replace(/(?:…|\.\.\.)+$/, "").trim();
+    if (!preview) return "";
+    const t = rec.timestamp ? Date.parse(rec.timestamp) : Infinity;
+    let best = null;
+    let bestT = -Infinity;
+    for (const m of all) {
+      if (m.id === rec.id) continue;
+      if (who && normAuthor(m.author) !== who) continue;
+      const cf = normText(m.content);
+      if (!cf || !cf.startsWith(preview)) continue; // preview is a (possibly truncated) prefix
+      const mt = m.timestamp ? Date.parse(m.timestamp) : -Infinity;
+      if (mt <= t && mt >= bestT) {
+        best = m;
+        bestT = mt;
+      }
+    }
+    return best ? best.id : "";
+  }
+
+  function buildDceJson() {
+    const { guild, channel } = dceGuildChannel();
+    const records = sortedMessages();
+    const usernameMap = buildUsernameMap();
+    const messages = records.map((r) => {
+      const msg = dceMessage(r, guild.id, channel.id, usernameMap);
+      if (msg.reference)
+        msg.reference.messageId = resolveReferenceId(r, records);
+      return msg;
+    });
+    return JSON.stringify(
+      {
+        guild,
+        channel,
+        dateRange: { after: null, before: null },
+        exportedAt: new Date().toISOString(),
+        messages,
+        messageCount: messages.length,
       },
       null,
       2
@@ -417,6 +718,9 @@
         break;
       case "buildText":
         sendResponse({ filename: exportName("txt"), text: buildTranscript() });
+        break;
+      case "buildDce":
+        sendResponse({ filename: exportName("dce.json"), text: buildDceJson() });
         break;
       default:
         sendResponse(null);

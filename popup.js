@@ -31,7 +31,7 @@ function saveBlob(filename, text, mime) {
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
-const controls = [".toggle", ".dl", ".txt", ".clr"];
+const controls = [".toggle", ".dl", ".txt", ".dce", ".clr"];
 
 function render(st) {
   lastState = st;
@@ -68,6 +68,10 @@ $(".dl").addEventListener("click", async () => {
 $(".txt").addEventListener("click", async () => {
   const r = await send("buildText");
   if (r) saveBlob(r.filename, r.text, "text/plain");
+});
+$(".dce").addEventListener("click", async () => {
+  const r = await send("buildDce");
+  if (r) saveBlob(r.filename, r.text, "application/json");
 });
 
 (async function init() {

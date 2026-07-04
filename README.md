@@ -33,6 +33,7 @@ The counter updates live while the popup is open, and capture keeps running in t
 ```json
 {
   "author": "k",
+  "authorId": "123456789012345678",
   "timestamp": "2025-07-12T06:50:03.120Z",
   "content": "won't happen again",
   "media": [{ "type": "image", "url": "https://cdn.discordapp.com/.../pic.png", "filename": "pic.png" }],
@@ -55,10 +56,13 @@ The counter updates live while the popup is open, and capture keeps running in t
   [IMG]
 ```
 
-A `=== date ===` header is emitted per day; the first message of a day shows an absolute time, later ones a relative delta (`+4s`, `+1m`, `+2h`). Same-author runs are grouped; replies quote the original; media becomes `[IMG]` / `[VIDEO]` / `[FILE]`.
+A `=== date ===` header is emitted per day; the first message of a day shows an absolute time, later ones a relative delta (`+4s`, `+1m`, `+2h`). Same-author runs are grouped; replies quote the original; media becomes `[IMG]` / `[VIDEO]` / `[GIF]` / `[FILE]`.
+
+**DCE JSON** — matches [DiscordChatExporter](https://github.com/Tyrrrz/DiscordChatExporter)'s schema, so it drops into tools that read DCE exports. Includes role colors (`author.color`) in servers. Fields the page can't provide (attachment sizes, embeds) are left empty. Reply links resolve only when the replied-to message was also captured.
 
 ## Notes
 
-- `author` is the display name — Discord doesn't expose user IDs in the DOM.
+- `authorId` is recovered from the avatar URL, so users on the default avatar (no custom image) won't have one.
+- In DCE JSON, `author.name` is the account @handle and `nickname` is the display name. The handle is only scraped where Discord shows it (DM header, your account panel), so in server channels it falls back to the display name.
 - Selectors follow Discord's current DOM, so a major Discord update may need a tweak.
 - For personal use. Automating exports pushes against Discord's ToS — keep it as an unpacked extension rather than publishing it.
