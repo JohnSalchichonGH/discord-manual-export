@@ -3,145 +3,292 @@
   <head>
     <meta charset="utf-8" />
     <style>
+      :root {
+        --bg: #1e1f22;
+        --bg-2: #2b2d31;
+        --bg-3: #313338;
+        --bg-hover: #3a3d44;
+        --txt: #f2f3f5;
+        --muted: #949ba4;
+        --muted-2: #80848e;
+        --green: #248046;
+        --green-h: #1a6334;
+        --green-live: #23a55a;
+        --red: #b4432f;
+        --red-h: #8f3323;
+        --red-live: #f23f43;
+        --blurple: #5865f2;
+        --blurple-h: #4752c4;
+        --line: #2b2d31;
+        --radius: 7px;
+      }
+      * {
+        box-sizing: border-box;
+      }
       body {
         margin: 0;
-        width: 220px;
+        width: 250px;
         font: 13px/1.4 -apple-system, "Segoe UI", Roboto, sans-serif;
-        background: #1e1f22;
-        color: #dbdee1;
+        background: var(--bg);
+        color: var(--txt);
         padding: 12px;
       }
       .title {
-        font-weight: 600;
         display: flex;
         justify-content: space-between;
         align-items: center;
-        margin-bottom: 8px;
+        font-weight: 700;
+        font-size: 13.5px;
       }
       .dot {
-        width: 8px;
-        height: 8px;
+        width: 9px;
+        height: 9px;
         border-radius: 50%;
-        background: #80848e;
+        background: var(--muted-2);
+        transition: background 0.2s;
       }
       .dot.on {
-        background: #23a55a;
-        box-shadow: 0 0 6px #23a55a;
+        background: var(--green-live);
+        animation: pulse 1.6s infinite;
+      }
+      @keyframes pulse {
+        0% {
+          box-shadow: 0 0 0 0 rgba(35, 165, 90, 0.5);
+        }
+        70% {
+          box-shadow: 0 0 0 5px rgba(35, 165, 90, 0);
+        }
+        100% {
+          box-shadow: 0 0 0 0 rgba(35, 165, 90, 0);
+        }
+      }
+
+      .hero {
+        display: flex;
+        align-items: baseline;
+        gap: 6px;
+        margin: 9px 0 10px;
       }
       .count {
-        font-size: 22px;
-        font-weight: 700;
+        font-size: 25px;
+        font-weight: 800;
+        line-height: 1;
         color: #fff;
-        margin: 4px 0 10px;
       }
       .count small {
-        font-size: 12px;
-        font-weight: 400;
-        color: #949ba4;
+        font-size: 11.5px;
+        font-weight: 500;
+        color: var(--muted);
       }
       .channelName {
-        font-size: 11px;
-        color: #949ba4;
-        margin: -6px 0 8px;
-        min-height: 13px;
+        font-size: 11.5px;
+        color: var(--muted);
+        margin-left: auto;
+        max-width: 120px;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
       }
+
       button {
-        width: 100%;
-        margin: 4px 0;
-        padding: 7px 10px;
         border: 0;
-        border-radius: 6px;
         cursor: pointer;
-        font-weight: 600;
-        font-size: 13px;
         color: #fff;
+        font-family: inherit;
+        transition: background 0.15s, opacity 0.15s;
       }
       button:disabled {
-        opacity: 0.4;
+        opacity: 0.45;
         cursor: default;
       }
-      .go { background: #248046; }
-      .go:hover:not(:disabled) { background: #1a6334; }
-      .stop { background: #b4432f; }
-      .stop:hover:not(:disabled) { background: #8f3323; }
-      .dl { background: #5865f2; }
-      .dl:hover:not(:disabled) { background: #4752c4; }
-      .txt { background: #4e5058; }
-      .txt:hover:not(:disabled) { background: #5c5e66; }
-      .dce { background: #4e5058; }
-      .dce:hover:not(:disabled) { background: #5c5e66; }
-      .clr { background: #3a3c41; }
-      .clr:hover:not(:disabled) { background: #4a4d52; }
+
+      .toggle {
+        width: 100%;
+        padding: 9px;
+        border-radius: var(--radius);
+        font-weight: 700;
+        font-size: 12.5px;
+      }
+      .toggle.go {
+        background: var(--green);
+      }
+      .toggle.go:hover:not(:disabled) {
+        background: var(--green-h);
+      }
+      .toggle.stop {
+        background: var(--red);
+      }
+      .toggle.stop:hover:not(:disabled) {
+        background: var(--red-h);
+      }
+
+      .exportHead {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        margin: 12px 0 6px;
+      }
+      .label {
+        font-size: 10px;
+        font-weight: 700;
+        letter-spacing: 0.8px;
+        text-transform: uppercase;
+        color: var(--muted-2);
+      }
+      .clr {
+        background: transparent;
+        color: var(--muted);
+        font-size: 11px;
+        font-weight: 600;
+        padding: 2px 6px;
+        border-radius: 5px;
+      }
+      .clr:hover:not(:disabled) {
+        background: var(--bg-2);
+        color: var(--red-live);
+      }
+
+      .exportRow {
+        display: flex;
+        gap: 6px;
+      }
+      .exportRow button {
+        flex: 1;
+        padding: 7px 4px;
+        border-radius: var(--radius);
+        background: var(--bg-3);
+        font-weight: 600;
+        font-size: 11.5px;
+      }
+      .exportRow button:hover:not(:disabled) {
+        background: var(--bg-hover);
+      }
+      .exportRow .dl {
+        background: var(--blurple);
+      }
+      .exportRow .dl:hover:not(:disabled) {
+        background: var(--blurple-h);
+      }
+
       .fiberRow {
         display: flex;
         align-items: center;
-        gap: 8px;
-        margin-top: 10px;
-        padding-top: 10px;
-        border-top: 1px solid #2b2d31;
-        font-size: 12px;
-        color: #dbdee1;
+        justify-content: space-between;
+        gap: 10px;
+        margin-top: 13px;
+        padding-top: 11px;
+        border-top: 1px solid var(--line);
         cursor: pointer;
+        font-size: 12.5px;
+        font-weight: 600;
+        user-select: none;
       }
-      .fiberRow input {
-        width: auto;
-        margin: 0;
-        cursor: pointer;
+      .fiberRow .sub {
+        color: var(--muted);
+        font-weight: 500;
       }
+      .switch {
+        position: relative;
+        width: 34px;
+        height: 19px;
+        flex: none;
+      }
+      .switch input {
+        opacity: 0;
+        width: 0;
+        height: 0;
+      }
+      .slider {
+        position: absolute;
+        inset: 0;
+        background: #4e5058;
+        border-radius: 20px;
+        transition: background 0.2s;
+      }
+      .slider::before {
+        content: "";
+        position: absolute;
+        width: 13px;
+        height: 13px;
+        left: 3px;
+        top: 3px;
+        background: #fff;
+        border-radius: 50%;
+        transition: transform 0.2s;
+      }
+      .switch input:checked + .slider {
+        background: var(--green-live);
+      }
+      .switch input:checked + .slider::before {
+        transform: translateX(15px);
+      }
+
       .fiberHint {
-        font-size: 11px;
-        color: #949ba4;
-        margin-top: 4px;
+        font-size: 10.5px;
+        color: var(--muted-2);
+        line-height: 1.4;
+        margin-top: 5px;
       }
-      .fiberStatus {
-        font-size: 11px;
-        color: #949ba4;
-        margin-top: 4px;
-        min-height: 13px;
-      }
-      .status {
-        font-size: 11px;
-        color: #f0b232;
-        margin-top: 8px;
-        min-height: 14px;
-      }
+      .fiberStatus,
+      .status,
       .exportInfo {
         font-size: 11px;
-        color: #23a55a;
-        margin-top: 4px;
-        min-height: 13px;
       }
-      .hint {
-        font-size: 11px;
-        color: #949ba4;
+      .fiberStatus {
+        color: var(--muted);
+      }
+      .fiberStatus:not(:empty) {
+        margin-top: 5px;
+      }
+      .status {
+        color: #f0b232;
+      }
+      .status:not(:empty) {
+        margin-top: 8px;
+      }
+      .exportInfo {
+        color: var(--green-live);
+      }
+      .exportInfo:not(:empty) {
         margin-top: 6px;
       }
     </style>
   </head>
   <body>
     <div class="title"><span>Manual Export</span><span class="dot"></span></div>
-    <div class="count"><span class="n">—</span> <small>messages</small></div>
-    <div class="channelName"></div>
+
+    <div class="hero">
+      <span class="count"><span class="n">—</span></span>
+      <small>messages</small>
+      <span class="channelName"></span>
+    </div>
+
     <button class="toggle go">Start capture</button>
-    <button class="dl">Download JSON</button>
-    <button class="txt">Download Text</button>
-    <button class="dce">Download DCE JSON</button>
-    <button class="clr">Clear</button>
-    <label class="fiberRow"
-      ><input type="checkbox" class="fiber" /> High-fidelity (React)</label
-    >
-    <div class="fiberHint">
-      Reads Discord's own data for exact @handles and reply links, including
-      replies to media-only messages. Runs a read-only script in the page — no
-      network, nothing when off.
-    </div>
-    <div class="fiberStatus"></div>
     <div class="status"></div>
-    <div class="exportInfo"></div>
-    <div class="hint">
-      Open a channel and scroll it by hand — messages are captured as they appear.
-      Keep this popup open to watch the counter.
+
+    <div class="exportHead">
+      <span class="label">Export</span>
+      <button class="clr">Clear</button>
     </div>
+    <div class="exportRow">
+      <button class="dl">JSON</button>
+      <button class="txt">Text</button>
+      <button class="dce">DCE</button>
+    </div>
+    <div class="exportInfo"></div>
+
+    <label
+      class="fiberRow"
+      title="Reads Discord's own data for exact @handles and reply links, including replies to media-only messages. Read-only, no network — nothing runs when off."
+    >
+      <span>High-fidelity <span class="sub">(React)</span></span>
+      <span class="switch"
+        ><input type="checkbox" class="fiber" /><span class="slider"></span
+      ></span>
+    </label>
+    <div class="fiberHint">Exact @handles + reply links · read-only, no network</div>
+    <div class="fiberStatus"></div>
+
     <script src="fiber-reader.js"></script>
     <script src="popup.js"></script>
   </body>
