@@ -48,7 +48,7 @@ Exports may contain private messages, user IDs, media URLs, timestamps, reaction
 1. Open a channel or DM.
 2. Click the extension icon → **Start capture**.
 3. Scroll up through the history at your own pace.
-4. Click **Download JSON** or **Download Text**.
+4. Under **Export**, click **JSON**, **Text**, or **DCE** to download.
 
 The counter updates live while the popup is open, and capture keeps running in the tab even if you close it.
 
