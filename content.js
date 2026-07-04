@@ -390,29 +390,34 @@
     return out;
   }
 
+  const STICKER_FORMAT = { 1: "Png", 2: "Apng", 3: "Lottie", 4: "Gif" };
   function getStickers(li) {
-    const acc = li.querySelector('[id^="message-accessories-"]') || li;
+    const acc = li.querySelector('[id^="message-accessories-"]');
+    if (!acc) return [];
     const out = [];
     const seen = new Set();
+    // Sticker assets carry clean data-* attributes (data-id / data-name / format).
     acc
-      .querySelectorAll('img[class*="sticker"], [class*="clickableSticker"]')
+      .querySelectorAll('[data-type="sticker"], [class*="stickerAsset"]')
       .forEach((el) => {
-        const img = el.tagName === "IMG" ? el : el.querySelector("img");
-        const name = (
-          el.getAttribute("aria-label") ||
-          (img && img.getAttribute("alt")) ||
-          ""
-        ).trim();
-        const url = img ? img.getAttribute("src") : null;
-        let id = null;
-        if (url) {
-          const m = url.match(/\/stickers\/(\d+)/);
-          if (m) id = m[1];
+        const d = el.hasAttribute("data-id") ? el : el.closest("[data-id]");
+        const id = d ? d.getAttribute("data-id") : null;
+        let name = d ? d.getAttribute("data-name") : null;
+        const fmt = d ? d.getAttribute("data-format-type") : null;
+        const url = el.getAttribute ? el.getAttribute("src") : null;
+        if (!name) {
+          const alt = el.getAttribute && el.getAttribute("alt");
+          if (alt) name = alt.replace(/^Sticker,\s*/i, "").replace(/,\s*$/, "").trim();
         }
         const key = id || name || url;
         if (!key || seen.has(key)) return;
         seen.add(key);
-        out.push({ id, name: name || null, url: url || null });
+        out.push({
+          id: id || null,
+          name: name || null,
+          format: fmt ? STICKER_FORMAT[fmt] || fmt : null,
+          url: url || null,
+        });
       });
     return out;
   }
@@ -432,6 +437,7 @@
       const anchor =
         (titleEl && titleEl.querySelector("a[href]")) ||
         (titleEl && titleEl.closest("a[href]"));
+      const providerEl = em.querySelector('[class*="embedProvider"]');
       const authorEl = em.querySelector('[class*="embedAuthor"]');
       const footerEl = em.querySelector('[class*="embedFooter"]');
       const fields = [];
@@ -444,17 +450,27 @@
             value: v ? extractText(v) : "",
           });
       });
-      const thumbImg = em.querySelector(
-        '[class*="embedThumbnail"] img, [class*="embedImage"] img, [class*="embedMedia"] img'
+      const imgWrap = em.querySelector(
+        '[class*="embedImage"], [class*="embedThumbnail"]'
       );
+      let imageUrl = null;
+      if (imgWrap) {
+        const orig = imgWrap.querySelector('a[class*="originalLink"]');
+        const img = imgWrap.querySelector("img");
+        imageUrl =
+          (orig && orig.getAttribute("href")) ||
+          (img && img.getAttribute("src")) ||
+          null;
+      }
       out.push({
         title: title || null,
         url: anchor ? anchor.getAttribute("href") : null,
         description: description || null,
+        provider: providerEl ? extractText(providerEl) : null,
         author: authorEl ? extractText(authorEl) : null,
         footer: footerEl ? extractText(footerEl) : null,
         fields,
-        thumbnailUrl: thumbImg ? thumbImg.getAttribute("src") : null,
+        imageUrl,
       });
     });
     return out;
@@ -878,8 +894,11 @@
         timestamp: null,
         description: e.description || "",
         color: null,
-        author: e.author ? { name: e.author, url: "", iconUrl: "" } : null,
-        thumbnail: e.thumbnailUrl ? { url: e.thumbnailUrl } : null,
+        author:
+          e.author || e.provider
+            ? { name: e.author || e.provider, url: "", iconUrl: "" }
+            : null,
+        thumbnail: e.imageUrl ? { url: e.imageUrl } : null,
         images: [],
         fields: (e.fields || []).map((f) => ({
           name: f.name || "",
@@ -892,7 +911,7 @@
       stickers: (r.stickers || []).map((s) => ({
         id: s.id || "",
         name: s.name || "",
-        format: "",
+        format: s.format || "",
         sourceUrl: s.url || "",
       })),
       reactions: (r.reactions || []).map((rc) => ({
