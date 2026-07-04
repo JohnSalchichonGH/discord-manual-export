@@ -8,6 +8,9 @@
  *   - Injects NOTHING into Discord's page DOM. All UI lives in the extension
  *     popup. The only thing running in the page is a passive MutationObserver,
  *     which is invisible to page JS. Nothing here is observable by Discord.
+ *   - The optional "High-fidelity" toggle is the one exception: it injects a
+ *     read-only main-world fiber reader (fiber-reader.js) on demand; see its
+ *     header and the README for that mode's separate, honest trade-offs.
  *
  * You scroll the channel by hand; the observer notices when Discord renders new
  * messages and harvests them from the DOM. Deduped by message id.
@@ -212,6 +215,17 @@
     return times[0] ? times[0].getAttribute("datetime") : null;
   }
 
+  // Reaction counts can be abbreviated ("1.2K"); parse that back to a number.
+  function parseCount(text) {
+    const m = (text || "").trim().match(/([\d.,]+)\s*([km]?)/i);
+    if (!m) return 1;
+    let n = parseFloat(m[1].replace(/,/g, ""));
+    if (isNaN(n)) return 1;
+    if (/k/i.test(m[2])) n *= 1000;
+    else if (/m/i.test(m[2])) n *= 1e6;
+    return Math.round(n) || 1;
+  }
+
   function getReactions(li) {
     const out = [];
     const cont = li.querySelector('[class*="reactions"]');
@@ -235,9 +249,7 @@
         }
       }
       const countEl = inner.querySelector('[class*="reactionCount"]');
-      const count = countEl
-        ? parseInt((countEl.textContent || "").replace(/\D/g, ""), 10) || 1
-        : 1;
+      const count = countEl ? parseCount(countEl.textContent) : 1;
       if (emoji) out.push({ emoji, count, id, url });
     });
     return out;
@@ -305,9 +317,10 @@
       } catch (e) {
         return;
       }
+      // Real uploads only. Stickers (also under media.discordapp.net) are handled
+      // by getStickers, so they're intentionally excluded here to avoid dupes.
       const isUpload =
-        MEDIA_HOST.test(url.hostname) &&
-        /\/(attachments|stickers)\//.test(url.pathname);
+        MEDIA_HOST.test(url.hostname) && /\/attachments\//.test(url.pathname);
       const isGif = GIF_HOST.test(url.hostname);
       // Trust real Discord uploads, known GIF hosts, or any actual <video>. This
       // skips link-preview thumbnails, avatars, and emoji while catching media.
@@ -768,7 +781,8 @@
       embeds: r.embeds || [],
       mentions: r.mentions || [],
       reactions: r.reactions,
-      replyTo: r.replyTo,
+      // copy so enriching the export can't mutate the stored record
+      replyTo: r.replyTo ? { ...r.replyTo } : null,
     };
   }
 
@@ -827,7 +841,7 @@
     ];
     for (const s of gCandidates) {
       const el = document.querySelector(s);
-      const t = el ? el.textContent.trim() : "";
+      const t = el ? extractText(el) : ""; // extractText drops hidden a11y text
       if (t && t !== (ch.name || "")) {
         guildName = t;
         break;
@@ -859,6 +873,15 @@
     };
   }
 
+  // Non-system message types → DCE's type strings (system types are filtered out).
+  const DCE_TYPE = {
+    0: "Default",
+    19: "Reply",
+    20: "ChatInputCommand",
+    21: "ThreadStarterMessage",
+    23: "ContextMenuCommand",
+  };
+
   function dceMessage(r, guildId, channelId, usernameMap, fib) {
     const display = r.author || "";
     // name = account @handle: prefer the fiber reader's exact username, then the
@@ -867,7 +890,8 @@
       (fib && fib.username) || (usernameMap && usernameMap.get(display)) || display;
     return {
       id: r.id,
-      type: r.replyTo ? "Reply" : "Default",
+      // Exact type from the fiber reader when available, else the reply heuristic.
+      type: (fib && DCE_TYPE[fib.type]) || (r.replyTo ? "Reply" : "Default"),
       timestamp: r.timestamp,
       timestampEdited: (fib && fib.editedTimestamp) || r.editedTimestamp || null,
       callEndedTimestamp: null,

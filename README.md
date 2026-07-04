@@ -45,12 +45,18 @@ The counter updates live while the popup is open, and capture keeps running in t
   "author": "k",
   "authorId": "123456789012345678",
   "timestamp": "2025-07-12T06:50:03.120Z",
+  "editedTimestamp": null,
   "content": "won't happen again",
   "media": [{ "type": "image", "url": "https://cdn.discordapp.com/.../pic.png", "filename": "pic.png" }],
+  "stickers": [{ "id": "144...", "name": "smirking chess guy", "format": "Png", "url": "https://media.discordapp.net/stickers/144....webp" }],
+  "embeds": [{ "title": "...", "url": "https://...", "description": "...", "provider": "..." }],
+  "mentions": ["tetron"],
   "reactions": [{ "emoji": "👍", "count": 1 }],
-  "replyTo": { "author": "tetron", "content": "jesus christ its annoying" }
+  "replyTo": { "author": "tetron", "content": "jesus christ its annoying", "messageId": "123..." }
 }
 ```
+
+(`username` is added when High-fidelity mode is on.)
 
 **Text** — a readable transcript:
 
