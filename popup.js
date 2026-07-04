@@ -44,6 +44,7 @@ function render(st) {
     $(".dot").classList.remove("on");
     $(".status").textContent = "Open a Discord tab to use this.";
     $(".fiberStatus").textContent = "";
+    $(".channelName").textContent = "";
     controls.forEach((s) => ($(s).disabled = true));
     return;
   }
@@ -53,9 +54,14 @@ function render(st) {
   toggle.textContent = st.capturing ? "Stop capture" : "Start capture";
   toggle.className = "toggle " + (st.capturing ? "stop" : "go");
   $(".fiber").checked = !!st.fiber;
-  $(".status").textContent = st.warning || "";
+  $(".channelName").textContent = st.channelName ? "in " + st.channelName : "";
+  $(".status").textContent =
+    st.warning ||
+    (st.stoppedReason === "channelChanged"
+      ? "Capture stopped: channel changed."
+      : "");
   const transport = {
-    MessagePort: "✓ via private channel",
+    MessagePort: "✓ via MessagePort (not the window bus)",
     unavailable: "unavailable on this tab (DOM-only still active)",
     connecting: "connecting…",
   };
@@ -72,6 +78,7 @@ $(".toggle").addEventListener("click", async () => {
   render(await send(lastState && lastState.capturing ? "stop" : "start"));
 });
 $(".clr").addEventListener("click", async () => {
+  if (!confirm("Clear all captured messages?")) return;
   render(await send("clear"));
 });
 function afterExport(r, mime) {

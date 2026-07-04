@@ -16,8 +16,8 @@
  * window bus.
  *
  * SENTRY SAFETY: every function body and callback is wrapped in try/catch, it
- * never calls console.*, and it uses no promises — so it can never surface an
- * uncaught error, rejection, or log into Discord's telemetry.
+ * never calls console.*, and it uses no promises — written to avoid surfacing
+ * uncaught errors, rejections, or logs into Discord's telemetry.
  */
 function fiberReaderMain(nonce) {
   try {
@@ -47,25 +47,31 @@ function fiberReaderMain(nonce) {
     function messageOf(el) {
       try {
         var want = liId(el);
+        if (!want) return null;
         var node = fiberOf(el);
-        var fallback = null;
         for (var i = 0; node && i < 80; i++) {
           var p = node.memoizedProps;
           if (p) {
             for (var k in p) {
               var v = p[k];
-              if (v && typeof v === "object" && v.author && v.id != null && "content" in v) {
-                if (String(v.id) === want) return v;
-                if (!fallback) fallback = v;
+              // Exact id match only — fail closed rather than risk enriching a
+              // visible message with a nested referenced_message's data.
+              if (
+                v &&
+                typeof v === "object" &&
+                v.author &&
+                v.id != null &&
+                "content" in v &&
+                String(v.id) === want
+              ) {
+                return v;
               }
             }
           }
           node = node.return;
         }
-        return fallback;
-      } catch (e) {
-        return null;
-      }
+      } catch (e) {}
+      return null;
     }
 
     function isoOrNull(t) {

@@ -39,6 +39,12 @@
         font-weight: 400;
         color: #949ba4;
       }
+      .channelName {
+        font-size: 11px;
+        color: #949ba4;
+        margin: -6px 0 8px;
+        min-height: 13px;
+      }
       button {
         width: 100%;
         margin: 4px 0;
@@ -115,6 +121,7 @@
   <body>
     <div class="title"><span>Manual Export</span><span class="dot"></span></div>
     <div class="count"><span class="n">—</span> <small>messages</small></div>
+    <div class="channelName"></div>
     <button class="toggle go">Start capture</button>
     <button class="dl">Download JSON</button>
     <button class="txt">Download Text</button>
@@ -124,8 +131,9 @@
       ><input type="checkbox" class="fiber" /> High-fidelity (React)</label
     >
     <div class="fiberHint">
-      Reads Discord's own data for exact @handles and reply links (incl. media).
-      Runs a read-only script in the page — no network, nothing when off.
+      Reads Discord's own data for exact @handles and reply links, including
+      replies to media-only messages. Runs a read-only script in the page — no
+      network, nothing when off.
     </div>
     <div class="fiberStatus"></div>
     <div class="status"></div>

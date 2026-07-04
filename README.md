@@ -2,7 +2,7 @@
 
 A tiny Chrome extension that captures Discord messages **as you scroll a channel by hand**, then exports them to JSON or a clean text transcript.
 
-It reads only what's already on your screen — no automation, no network requests, no page injection.
+It reads only what's already on your screen — no automation, no network requests, and no main-world page injection by default.
 
 ## Why it's safe
 
@@ -19,6 +19,7 @@ A toggle in the popup that reads Discord's own in-page data (React state) to add
 - It makes **no network requests** and **patches nothing** — it only reads state Discord already loaded.
 - It's written so it can **never** surface an error into Discord's telemetry (every path is wrapped; it never throws or logs).
 - **Data flows over a private `MessagePort`, and only that.** No export data ever touches the shared `window` bus; the only thing on it is a **single, data-less handshake** keyed by a **random per-session nonce** (no static marker). If the cross-world port transfer fails, high-fidelity is simply reported **unavailable on that tab (fail closed)** and DOM-only capture continues — it never falls back to putting data on the window bus. Honest caveat: the handshake transfers the port, which is briefly exposed in the event's `ports` to any `message` listener, so this hides the *data* from passive listeners but isn't a hard boundary against page code that specifically hooks transferred ports.
+- Turning it **off** stops further page-world reading, but fields it already enriched stay in the capture (and export) — this is reported in the JSON's `captureQuality.highFidelityDataCaptured`. Use **Clear** to drop them.
 - Trade-off vs. the pure-DOM default: it runs in the page context, sharing Discord's JS environment. That's low-signal and non-specific in practice, but **not** the hard isolated-world guarantee of the default — anything Discord has already instrumented in the page (e.g. wrapped `addEventListener`) could in principle observe corresponding behavior, and it's more fragile to Discord front-end updates. **DOM-only (toggle off) remains the lowest-surface mode.**
 
 ## Safety contract

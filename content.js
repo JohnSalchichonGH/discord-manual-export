@@ -835,10 +835,19 @@
     const replies = messages.filter((m) => m.replyTo);
     const resolved = replies.filter((m) => m.replyTo && m.replyTo.messageId).length;
     const missingAuthor = messages.filter((m) => !m.author).length;
+    const missingTs = messages.filter((m) => !m.timestamp).length;
     const warnings = [];
     if (missingAuthor)
       warnings.push(
         `${missingAuthor} message(s) had no visible author — scroll over the group header and recapture, or enable High-fidelity.`
+      );
+    if (missingTs)
+      warnings.push(
+        `${missingTs} message(s) had no timestamp (shown as "unknown time" in the transcript).`
+      );
+    if (store.size > 25000)
+      warnings.push(
+        "Large capture — exports are built as one in-memory string and may be memory-heavy."
       );
     const h = healthCheck();
     if (h) warnings.push(h);
@@ -847,10 +856,11 @@
       exportedMessageCount: messages.length,
       systemMessagesSkipped: store.size - messages.length,
       missingAuthorCount: missingAuthor,
-      missingTimestampCount: messages.filter((m) => !m.timestamp).length,
+      missingTimestampCount: missingTs,
       replyLinksResolved: resolved,
       replyLinksUnresolved: replies.length - resolved,
       highFidelityEnabled: fiberEnabled,
+      highFidelityDataCaptured: fiberStore.size > 0,
       highFidelityTransport: fiberTransport(),
       mediaUrlCount: messages.reduce(
         (n, m) => n + ((m.media && m.media.length) || 0),
@@ -1167,15 +1177,15 @@
   }
 
   function buildTranscript() {
-    const messages = sortedMessages().filter((m) => m.timestamp);
+    const messages = sortedMessages(); // never drop captured messages
     const lines = [];
     let prevDate = null;
     let prevDayKey = null;
     let curAuthor = null;
 
     messages.forEach((msg) => {
-      const d = new Date(msg.timestamp);
-      const newDay = dayKey(d) !== prevDayKey;
+      const d = msg.timestamp ? new Date(msg.timestamp) : null;
+      const newDay = !!d && dayKey(d) !== prevDayKey;
 
       if (newDay) {
         if (lines.length) lines.push("");
@@ -1187,16 +1197,25 @@
       const startNew = newDay || msg.author !== curAuthor || !!msg.replyTo;
       if (startNew) {
         lines.push("");
-        const stamp = prevDate && !newDay ? fmtDelta(d - prevDate) : fmtTime(d);
+        const stamp = !d
+          ? "unknown time"
+          : prevDate && !newDay
+          ? fmtDelta(d - prevDate)
+          : fmtTime(d);
         lines.push(`[${stamp}] ${msg.author || "Unknown"}:`);
         curAuthor = msg.author;
       }
 
       messageLines(msg).forEach((l) => lines.push(l));
-      prevDate = d;
+      if (d) prevDate = d;
     });
 
-    return lines.join("\n").replace(/^\n+/, "") + "\n";
+    // Surface quality issues at the top so they can't be missed.
+    const q = captureDiagnostics(messages);
+    const header = q.warnings.length
+      ? "Export warnings:\n" + q.warnings.map((w) => "- " + w).join("\n") + "\n\n"
+      : "";
+    return header + lines.join("\n").replace(/^\n+/, "") + "\n";
   }
 
   /* ---------------- popup messaging ---------------- */
@@ -1227,6 +1246,8 @@
       fiber: fiberEnabled,
       fiberStatus: fiberTransport(),
       warning: healthCheck(),
+      channelName: captureCtx && captureCtx.channel ? captureCtx.channel.name : null,
+      stoppedReason: !capturing ? stoppedReason : null,
     };
   }
 

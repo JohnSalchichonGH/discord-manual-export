@@ -54,6 +54,44 @@ for (const f of files) {
   }
 }
 
+// Manifest can't quietly gain broader capabilities.
+try {
+  const m = JSON.parse(
+    fs.readFileSync(path.join(__dirname, "manifest.json"), "utf8")
+  );
+  const bannedFields = [
+    "host_permissions",
+    "background",
+    "externally_connectable",
+    "web_accessible_resources",
+    "optional_permissions",
+    "optional_host_permissions",
+  ];
+  for (const key of bannedFields) {
+    if (key in m) {
+      console.error(`FAIL: manifest.json has forbidden field: ${key}`);
+      failed = true;
+    }
+  }
+  const perms = JSON.stringify((m.permissions || []).slice().sort());
+  if (perms !== JSON.stringify(["activeTab", "scripting"])) {
+    console.error(`FAIL: manifest permissions drifted: ${JSON.stringify(m.permissions)}`);
+    failed = true;
+  }
+  const allowedMatch = /^https:\/\/(discord|canary\.discord|ptb\.discord)\.com\/channels\/\*$/;
+  for (const cs of m.content_scripts || []) {
+    for (const mt of cs.matches || []) {
+      if (!allowedMatch.test(mt)) {
+        console.error(`FAIL: unexpected content-script match: ${mt}`);
+        failed = true;
+      }
+    }
+  }
+} catch (e) {
+  console.error("FAIL: could not parse manifest.json:", e.message);
+  failed = true;
+}
+
 if (failed) {
   console.error("\nSafety guardrail tripped — see above.");
   process.exit(1);
