@@ -78,7 +78,8 @@ A `=== date ===` header is emitted per day; the first message of a day shows an 
 
 ## Notes
 
-- `authorId` is recovered from the avatar URL, so users on the default avatar (no custom image) won't have one.
-- In DCE JSON, `author.name` is the account @handle and `nickname` is the display name. The handle is only scraped where Discord shows it (DM header, your account panel), so in server channels it falls back to the display name.
+- **Media URLs can expire.** Attachment URLs are copied exactly as Discord renders them, and Discord's CDN links are signed with an expiry (`?ex=…&is=…&hm=…`). They work now but may stop working later — if you want a permanent archive, download the files separately while the links are valid.
+- `authorId` is recovered from the avatar URL, so users on the default avatar (no custom image) won't have one (High-fidelity mode gets it for everyone).
+- In DCE JSON, `author.name` is the account @handle and `nickname` is the display name. The handle is only scraped where Discord shows it (DM header, your account panel), so in server channels it falls back to the display name unless High-fidelity mode is on.
 - Selectors follow Discord's current DOM, so a major Discord update may need a tweak.
-- For personal use. Automating exports pushes against Discord's ToS — keep it as an unpacked extension rather than publishing it.
+- **Personal use, own conversations.** Discord's Terms prohibit scraping the service without consent; don't redistribute other people's private messages. Keep this an unpacked extension for yourself rather than publishing it.

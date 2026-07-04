@@ -5,9 +5,10 @@
  *   - Makes ZERO network requests. Captured data never leaves your machine; it
  *     lives only in the in-memory `store` Map until you export it from the popup.
  *   - Does NOT patch fetch/XHR, does NOT scroll/click for you.
- *   - Injects NOTHING into Discord's page DOM. All UI lives in the extension
- *     popup. The only thing running in the page is a passive MutationObserver,
- *     which is invisible to page JS. Nothing here is observable by Discord.
+ *   - Injects NOTHING into Discord's page DOM. In this default mode it does not
+ *     modify the page, make network requests, or run code in Discord's main JS
+ *     world — it only reads the rendered DOM from Chrome's isolated extension
+ *     world (a passive MutationObserver, invisible to page JS).
  *   - The optional "High-fidelity" toggle is the one exception: it injects a
  *     read-only main-world fiber reader (fiber-reader.js) on demand; see its
  *     header and the README for that mode's separate, honest trade-offs.
@@ -51,13 +52,20 @@
     for (const fm of arr) {
       if (!fm || !fm.id) continue;
       const ex = fiberStore.get(fm.id) || {};
-      ["referenceId", "authorId", "username", "discriminator", "editedTimestamp"].forEach(
+      ["referenceId", "authorId", "username", "globalName", "nick", "discriminator", "editedTimestamp"].forEach(
         (k) => {
           if (fm[k]) ex[k] = fm[k];
         }
       );
       if (typeof fm.type === "number") ex.type = fm.type; // 0 is valid, don't skip
       fiberStore.set(fm.id, ex);
+      // Backfill a display author on the store record if the DOM couldn't get it
+      // (e.g. a grouped continuation that led the viewport with no group header).
+      const rec = store.get(fm.id);
+      if (rec && !rec.author) {
+        const disp = fm.nick || fm.globalName || fm.username;
+        if (disp) rec.author = disp;
+      }
     }
   }
 
@@ -161,6 +169,10 @@
     clone
       .querySelectorAll('[class*="edited"], [class*="hiddenVisually"]')
       .forEach((e) => e.remove());
+    // Preserve hard line breaks (textContent doesn't include <br> newlines).
+    clone.querySelectorAll("br").forEach((br) => {
+      br.replaceWith(document.createTextNode("\n"));
+    });
     clone.querySelectorAll("img[alt]").forEach((img) => {
       img.replaceWith(document.createTextNode(img.getAttribute("alt") || ""));
     });
@@ -549,7 +561,10 @@
         currentAvatar = getAvatarUrl(li);
         currentAuthorId = userIdFromAvatar(currentAvatar);
         currentColor = getRoleColor(authEl);
-        currentIsBot = !!li.querySelector('[class*="botTag"]');
+        // Exclude the reply preview so replying to a bot doesn't mark you a bot.
+        currentIsBot = [...li.querySelectorAll('[class*="botTag"]')].some(
+          (e) => !isInReplyContext(e)
+        );
       }
 
       const contentEl = getContentEl(li);
@@ -655,6 +670,12 @@
   function clearAll() {
     store.clear();
     fiberStore.clear();
+    // If we're not mid-capture, drop the channel snapshot too so a later export
+    // doesn't reuse stale channel metadata.
+    if (!capturing) {
+      captureCtx = null;
+      storeChannelKey = null;
+    }
   }
 
   /* ---------------- export builders (return strings; popup saves them) ---------------- */
@@ -1159,7 +1180,9 @@
   /* ---------------- popup messaging ---------------- */
 
   function state() {
-    return { capturing, count: store.size, fiber: fiberEnabled };
+    // Count what will actually export (system messages are filtered out).
+    const count = [...store.values()].filter((r) => !isSystemMessage(r)).length;
+    return { capturing, count, fiber: fiberEnabled };
   }
 
   chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
@@ -1168,13 +1191,12 @@
         sendResponse(state());
         break;
       case "setFiber":
+        teardownFiber(); // close any existing session first (no leaked port/listener)
         if (msg.on) {
           fiberNonce = msg.nonce || null;
           fiberEnabled = true;
           setupFiberChannel();
           requestFiber();
-        } else {
-          teardownFiber();
         }
         sendResponse(state());
         break;
