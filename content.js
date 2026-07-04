@@ -808,9 +808,18 @@
     return String(n).padStart(2, "0");
   }
 
-  function todayStr() {
+  // Local date+time, filename-safe (no colons). The time makes each capture's
+  // filename unique, so re-importing several captures of one channel never lets
+  // one file supersede another by name (which would drop the earlier capture's
+  // messages before dedup runs). Local, not UTC: this is only a human-readable
+  // label, and it reads naturally next to when you clicked export. The instants
+  // INSIDE the JSON stay UTC (Discord's `Z` timestamps) so dedup is unambiguous.
+  function exportStamp() {
     const d = new Date();
-    return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+    return (
+      `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}` +
+      `_${pad2(d.getHours())}-${pad2(d.getMinutes())}-${pad2(d.getSeconds())}`
+    );
   }
 
   // Strip characters not allowed in filenames.
@@ -821,9 +830,11 @@
       .trim();
   }
 
-  // DCE-style filename:
-  //   "<guild> - <category> - <channel> - <date> [<channelId>].<ext>"
-  //   DMs: "Direct Messages - <recipient> - <date> [<channelId>].<ext>"
+  // DCE-style filename, with a per-capture timestamp so each export is uniquely
+  // named (see exportStamp — prevents a re-import from dropping an earlier
+  // capture of the same channel). The [channelId] stays at the end like DCE.
+  //   "<guild> - <category> - <channel> - <date_time> [<channelId>].<ext>"
+  //   DMs: "Direct Messages - <recipient> - <date_time> [<channelId>].<ext>"
   function exportName(ext) {
     const { guild, channel } = dceGuildChannel();
     const isDm = guild.id === "0";
@@ -833,7 +844,7 @@
     const prefix =
       parts.map(sanitizeFilePart).filter(Boolean).join(" - ") ||
       "discord-export";
-    return `${prefix} - ${todayStr()} [${channel.id || "channel"}].${ext}`;
+    return `${prefix} - ${exportStamp()} [${channel.id || "channel"}].${ext}`;
   }
 
   // The documented, clean shape (excludes internal-only fields like avatarUrl).
@@ -1121,11 +1132,17 @@
           resolveReferenceId(r, records);
       return msg;
     });
+    // Real captured range, drawn from the messages' own UTC (`Z`) timestamps —
+    // offset-bearing, so a parser reads an unambiguous instant. Lexicographic
+    // order equals chronological order for ISO-8601 UTC strings.
+    const stamps = records.map((r) => r.timestamp).filter(Boolean).sort();
+    const after = stamps.length ? stamps[0] : null;
+    const before = stamps.length ? stamps[stamps.length - 1] : null;
     return JSON.stringify(
       {
         guild,
         channel,
-        dateRange: { after: null, before: null },
+        dateRange: { after, before },
         exportedAt: new Date().toISOString(),
         messages,
         messageCount: messages.length,
