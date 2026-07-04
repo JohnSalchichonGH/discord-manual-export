@@ -55,11 +55,18 @@ function render(st) {
   toggle.className = "toggle " + (st.capturing ? "stop" : "go");
   $(".fiber").checked = !!st.fiber;
   $(".channelName").textContent = st.channelName ? "in " + st.channelName : "";
-  $(".status").textContent =
-    st.warning ||
-    (st.stoppedReason === "channelChanged"
-      ? "Capture stopped: channel changed."
-      : "");
+  let status = "";
+  if (st.warning) {
+    status = st.warning;
+  } else if (st.navigatedAway && st.count) {
+    // Data was captured elsewhere and we're now viewing a different channel.
+    status = `Captured data is from ${
+      st.capturedChannelName || "another channel"
+    }. Clear to capture here.`;
+  } else if (st.stoppedReason === "channelChanged") {
+    status = "Capture stopped: channel changed.";
+  }
+  $(".status").textContent = status;
   const transport = {
     MessagePort: "✓ via MessagePort (not the window bus)",
     unavailable: "unavailable on this tab (DOM-only still active)",

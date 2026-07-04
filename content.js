@@ -581,8 +581,12 @@
         if (record.isSystem) existing.isSystem = true;
         if (!existing.timestamp && record.timestamp)
           existing.timestamp = record.timestamp;
-        // Reactions reflect current state (incl. removals) — overwrite.
-        existing.reactions = record.reactions;
+        // Reactions reflect current state (incl. removals). Overwrite when the
+        // message shows a reactions bar (present-but-empty = all removed); but if
+        // no reactions container rendered this pass, keep what we had rather than
+        // wipe a good set during a partial/lazy re-render.
+        if (record.reactions.length || li.querySelector('[class*="reactions"]'))
+          existing.reactions = record.reactions;
         if (record.media.length && !existing.media.length)
           existing.media = record.media;
         // If the message was edited since we captured it, refresh content + time.
@@ -633,7 +637,15 @@
     captureStoppedAt = null;
     stoppedReason = null;
     capture();
-    captureCtx = { key, channel: channelInfo(), guildChannel: dceGuildChannel() };
+    // Snapshot the @handle map too: it's scraped from the (channel-specific) DM
+    // header + account panel, so it must be frozen here — reading it live at
+    // export time would use whatever channel you've since navigated to.
+    captureCtx = {
+      key,
+      channel: channelInfo(),
+      guildChannel: dceGuildChannel(),
+      usernameMap: buildUsernameMap(),
+    };
     const list = getList();
     const target =
       (list && (list.closest('[class*="scroller"]') || list.parentElement)) ||
@@ -727,6 +739,7 @@
 
   // displayName -> username, from the DM recipient and the logged-in account.
   function buildUsernameMap() {
+    if (captureCtx && captureCtx.usernameMap) return captureCtx.usernameMap; // snapshot
     const map = new Map();
     [dmHeaderInfo(), accountPanelInfo()].forEach((info) => {
       if (info && info.username) map.set(info.displayName, info.username);
@@ -734,8 +747,9 @@
     return map;
   }
 
-  function channelInfo() {
-    if (captureCtx && captureCtx.channel) return captureCtx.channel; // captured snapshot
+  // The channel the user is looking at RIGHT NOW (live DOM/URL), ignoring any
+  // capture snapshot. Used by state() so the popup always reflects where you are.
+  function liveChannelInfo() {
     const parts = location.pathname.match(/channels\/([^/]+)\/([^/]+)/);
     const guildId = parts ? parts[1] : null;
     const id = parts ? parts[2] : null;
@@ -754,6 +768,11 @@
     }
     if (!name) name = document.title.replace(/^\(\d+\)\s*/, "").trim();
     return { id, name, url: location.href };
+  }
+
+  function channelInfo() {
+    if (captureCtx && captureCtx.channel) return captureCtx.channel; // captured snapshot
+    return liveChannelInfo();
   }
 
   // System/notification messages (pins, joins, boosts, …) — dropped from exports.
@@ -1240,13 +1259,22 @@
   function state() {
     // Count what will actually export (system messages are filtered out).
     const count = [...store.values()].filter((r) => !isSystemMessage(r)).length;
+    // Always report the LIVE channel so the popup reflects where you are now,
+    // not a stale snapshot from a previous Start in another channel.
+    const liveName = liveChannelInfo().name || null;
+    const capturedName =
+      captureCtx && captureCtx.channel ? captureCtx.channel.name : null;
+    // True when captured data belongs to a channel other than the live one.
+    const navigatedAway = !!(captureCtx && captureCtx.key !== channelKey());
     return {
       capturing,
       count,
       fiber: fiberEnabled,
       fiberStatus: fiberTransport(),
       warning: healthCheck(),
-      channelName: captureCtx && captureCtx.channel ? captureCtx.channel.name : null,
+      channelName: liveName,
+      capturedChannelName: capturedName,
+      navigatedAway,
       stoppedReason: !capturing ? stoppedReason : null,
     };
   }

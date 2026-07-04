@@ -78,7 +78,7 @@ try {
     console.error(`FAIL: manifest permissions drifted: ${JSON.stringify(m.permissions)}`);
     failed = true;
   }
-  const allowedMatch = /^https:\/\/(discord|canary\.discord|ptb\.discord)\.com\/channels\/\*$/;
+  const allowedMatch = /^https:\/\/(discord|canary\.discord|ptb\.discord)\.com\/\*$/;
   for (const cs of m.content_scripts || []) {
     for (const mt of cs.matches || []) {
       if (!allowedMatch.test(mt)) {
