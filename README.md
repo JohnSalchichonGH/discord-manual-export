@@ -99,3 +99,7 @@ A `=== date ===` header is emitted per day; the first message of a day shows an 
 - In DCE JSON, `author.name` is the account @handle and `nickname` is the display name. The handle is only scraped where Discord shows it (DM header, your account panel), so in server channels it falls back to the display name unless High-fidelity mode is on.
 - Selectors follow Discord's current DOM, so a major Discord update may need a tweak.
 - **Personal use — and still policy-sensitive.** Discord's Terms prohibit scraping the service without written consent (including via software/processes), so this **may violate Discord's Terms even for personal use** — understand the account/platform risk. Don't redistribute other people's private messages. Keep it an unpacked extension for yourself; public distribution would also need a privacy policy and disclosures.
+
+## License
+
+[MIT](LICENSE). The license covers the code; it does not grant any right to the message data you export, which remains subject to Discord's Terms and the privacy of the people in those conversations.
