@@ -44,6 +44,7 @@
           if (fm[k]) ex[k] = fm[k];
         }
       );
+      if (typeof fm.type === "number") ex.type = fm.type; // 0 is valid, don't skip
       fiberStore.set(fm.id, ex);
     }
   }
@@ -425,6 +426,7 @@
         media: getMedia(li),
         reactions: getReactions(li),
         replyTo: getReply(li),
+        isSystem: !!li.querySelector('[class*="systemMessage"]'),
       };
 
       const existing = store.get(id);
@@ -436,6 +438,7 @@
           existing.avatarUrl = record.avatarUrl;
         if (!existing.color && record.color) existing.color = record.color;
         if (record.isBot) existing.isBot = true;
+        if (record.isSystem) existing.isSystem = true;
         if (!existing.timestamp && record.timestamp)
           existing.timestamp = record.timestamp;
         if (record.reactions.length) existing.reactions = record.reactions;
@@ -578,10 +581,21 @@
     return { id, name, url: location.href };
   }
 
+  // System/notification messages (pins, joins, boosts, …) — dropped from exports.
+  // Authoritative signal is the numeric message type (from the fiber reader);
+  // a DOM class is the fallback when high-fidelity is off.
+  const SYSTEM_TYPES = new Set([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 14, 15, 18, 22, 24]);
+
+  function isSystemMessage(r) {
+    if (r.isSystem) return true;
+    const f = fiberStore.get(r.id);
+    return !!(f && typeof f.type === "number" && SYSTEM_TYPES.has(f.type));
+  }
+
   function sortedMessages() {
-    return [...store.values()].sort((a, b) =>
-      (a.timestamp || "").localeCompare(b.timestamp || "")
-    );
+    return [...store.values()]
+      .filter((r) => !isSystemMessage(r))
+      .sort((a, b) => (a.timestamp || "").localeCompare(b.timestamp || ""));
   }
 
   function pad2(n) {

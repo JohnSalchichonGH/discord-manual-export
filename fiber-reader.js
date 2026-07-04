@@ -84,6 +84,7 @@ function fiberReaderMain(nonce) {
         var refId = ref ? ref.messageId || ref.message_id : null;
         return {
           id: String(m.id),
+          type: typeof m.type === "number" ? m.type : null,
           referenceId: refId ? String(refId) : null,
           username: a.username || null,
           globalName: a.globalName || a.global_name || null,
