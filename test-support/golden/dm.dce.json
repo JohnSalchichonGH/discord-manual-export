@@ -1,0 +1,71 @@
+{
+  "guild": {
+    "id": "0",
+    "name": "Direct Messages",
+    "iconUrl": ""
+  },
+  "channel": {
+    "id": "999",
+    "type": "DirectTextChat",
+    "categoryId": "",
+    "category": "",
+    "name": "Zoe",
+    "topic": null
+  },
+  "dateRange": {
+    "after": "2026-07-03T18:00:00.000Z",
+    "before": "2026-07-03T18:01:00.000Z"
+  },
+  "exportedAt": "2026-07-10T00:00:00.000Z",
+  "messages": [
+    {
+      "id": "d1",
+      "type": "Default",
+      "timestamp": "2026-07-03T18:00:00.000Z",
+      "timestampEdited": null,
+      "callEndedTimestamp": null,
+      "isPinned": false,
+      "content": "hey there",
+      "author": {
+        "id": "2001",
+        "name": "zoe_handle",
+        "discriminator": "0000",
+        "nickname": "Zoe",
+        "color": null,
+        "isBot": false,
+        "avatarUrl": ""
+      },
+      "attachments": [],
+      "embeds": [],
+      "stickers": [],
+      "reactions": [],
+      "mentions": [],
+      "reference": null
+    },
+    {
+      "id": "d2",
+      "type": "Default",
+      "timestamp": "2026-07-03T18:01:00.000Z",
+      "timestampEdited": null,
+      "callEndedTimestamp": null,
+      "isPinned": false,
+      "content": "hello!",
+      "author": {
+        "id": "2002",
+        "name": "Me",
+        "discriminator": "0000",
+        "nickname": "Me",
+        "color": null,
+        "isBot": false,
+        "avatarUrl": ""
+      },
+      "attachments": [],
+      "embeds": [],
+      "stickers": [],
+      "reactions": [],
+      "mentions": [],
+      "reference": null
+    }
+  ],
+  "messageCount": 2
+}

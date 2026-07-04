@@ -1,0 +1,348 @@
+{
+  "guild": {
+    "id": "111",
+    "name": "My Guild",
+    "iconUrl": ""
+  },
+  "channel": {
+    "id": "222",
+    "type": "GuildTextChat",
+    "categoryId": "",
+    "category": "Text Channels",
+    "name": "general",
+    "topic": null
+  },
+  "dateRange": {
+    "after": "2026-07-01T09:00:00.000Z",
+    "before": "2026-07-02T10:05:00.000Z"
+  },
+  "exportedAt": "2026-07-10T00:00:00.000Z",
+  "messages": [
+    {
+      "id": "m11",
+      "type": "Default",
+      "timestamp": null,
+      "timestampEdited": null,
+      "callEndedTimestamp": null,
+      "isPinned": false,
+      "content": "message with no timestamp",
+      "author": {
+        "id": "1007",
+        "name": "Grace",
+        "discriminator": "0000",
+        "nickname": "Grace",
+        "color": null,
+        "isBot": false,
+        "avatarUrl": ""
+      },
+      "attachments": [],
+      "embeds": [],
+      "stickers": [],
+      "reactions": [],
+      "mentions": [],
+      "reference": null
+    },
+    {
+      "id": "m1",
+      "type": "Default",
+      "timestamp": "2026-07-01T09:00:00.000Z",
+      "timestampEdited": null,
+      "callEndedTimestamp": null,
+      "isPinned": false,
+      "content": "Hello world",
+      "author": {
+        "id": "1001",
+        "name": "alice_h",
+        "discriminator": "0000",
+        "nickname": "Alice",
+        "color": "#e91e63",
+        "isBot": false,
+        "avatarUrl": "https://cdn.discordapp.com/avatars/1001/hash.webp"
+      },
+      "attachments": [],
+      "embeds": [],
+      "stickers": [],
+      "reactions": [
+        {
+          "emoji": {
+            "id": "",
+            "name": "👍",
+            "code": "",
+            "isAnimated": false,
+            "imageUrl": ""
+          },
+          "count": 5
+        },
+        {
+          "emoji": {
+            "id": "9001",
+            "name": "partyblob",
+            "code": "",
+            "isAnimated": true,
+            "imageUrl": "https://cdn.discordapp.com/emojis/9001.gif"
+          },
+          "count": 1200
+        }
+      ],
+      "mentions": [],
+      "reference": null
+    },
+    {
+      "id": "m2",
+      "type": "Reply",
+      "timestamp": "2026-07-01T09:00:30.000Z",
+      "timestampEdited": null,
+      "callEndedTimestamp": null,
+      "isPinned": false,
+      "content": "Reply to Alice",
+      "author": {
+        "id": "1002",
+        "name": "bob_h",
+        "discriminator": "0000",
+        "nickname": "Bob",
+        "color": null,
+        "isBot": false,
+        "avatarUrl": ""
+      },
+      "attachments": [],
+      "embeds": [],
+      "stickers": [],
+      "reactions": [],
+      "mentions": [],
+      "reference": {
+        "messageId": "m1",
+        "channelId": "222",
+        "guildId": "111"
+      }
+    },
+    {
+      "id": "m3",
+      "type": "Default",
+      "timestamp": "2026-07-01T09:02:00.000Z",
+      "timestampEdited": "2026-07-01T09:03:00.000Z",
+      "callEndedTimestamp": null,
+      "isPinned": false,
+      "content": "Edited message",
+      "author": {
+        "id": "1002",
+        "name": "Bob",
+        "discriminator": "0000",
+        "nickname": "Bob",
+        "color": null,
+        "isBot": false,
+        "avatarUrl": ""
+      },
+      "attachments": [],
+      "embeds": [],
+      "stickers": [],
+      "reactions": [],
+      "mentions": [],
+      "reference": null
+    },
+    {
+      "id": "m4",
+      "type": "Default",
+      "timestamp": "2026-07-01T09:05:00.000Z",
+      "timestampEdited": null,
+      "callEndedTimestamp": null,
+      "isPinned": false,
+      "content": "Look at this",
+      "author": {
+        "id": "1003",
+        "name": "carol_handle",
+        "discriminator": "0000",
+        "nickname": "Carol",
+        "color": null,
+        "isBot": false,
+        "avatarUrl": ""
+      },
+      "attachments": [
+        {
+          "id": "",
+          "url": "https://cdn.discordapp.com/attachments/1/2/pic.png",
+          "fileName": "pic.png",
+          "fileSizeBytes": 0
+        },
+        {
+          "id": "",
+          "url": "https://media.tenor.com/abc.gif",
+          "fileName": "abc.gif",
+          "fileSizeBytes": 0
+        }
+      ],
+      "embeds": [],
+      "stickers": [],
+      "reactions": [],
+      "mentions": [],
+      "reference": null
+    },
+    {
+      "id": "m5",
+      "type": "Default",
+      "timestamp": "2026-07-01T09:06:00.000Z",
+      "timestampEdited": null,
+      "callEndedTimestamp": null,
+      "isPinned": false,
+      "content": "",
+      "author": {
+        "id": "1003",
+        "name": "carol_handle",
+        "discriminator": "0000",
+        "nickname": "Carol",
+        "color": null,
+        "isBot": false,
+        "avatarUrl": ""
+      },
+      "attachments": [],
+      "embeds": [],
+      "stickers": [
+        {
+          "id": "5001",
+          "name": "blobwave",
+          "format": "Apng",
+          "sourceUrl": "https://media.discordapp.net/stickers/5001.png"
+        }
+      ],
+      "reactions": [],
+      "mentions": [],
+      "reference": null
+    },
+    {
+      "id": "m6",
+      "type": "Default",
+      "timestamp": "2026-07-01T14:00:00.000Z",
+      "timestampEdited": null,
+      "callEndedTimestamp": null,
+      "isPinned": false,
+      "content": "check link",
+      "author": {
+        "id": "1004",
+        "name": "dave_handle",
+        "discriminator": "0000",
+        "nickname": "Dave",
+        "color": null,
+        "isBot": false,
+        "avatarUrl": ""
+      },
+      "attachments": [],
+      "embeds": [
+        {
+          "title": "Example",
+          "url": "https://example.com",
+          "timestamp": null,
+          "description": "An example description",
+          "color": null,
+          "author": {
+            "name": "Example",
+            "url": "",
+            "iconUrl": ""
+          },
+          "thumbnail": {
+            "url": "https://example.com/img.png"
+          },
+          "images": [],
+          "fields": [
+            {
+              "name": "Field 1",
+              "value": "Value 1",
+              "isInline": false
+            }
+          ],
+          "footer": {
+            "text": "footer text",
+            "iconUrl": ""
+          },
+          "inlineEmojis": []
+        }
+      ],
+      "stickers": [],
+      "reactions": [],
+      "mentions": [
+        {
+          "id": "",
+          "name": "Alice",
+          "discriminator": "0000",
+          "nickname": "Alice"
+        }
+      ],
+      "reference": null
+    },
+    {
+      "id": "m7",
+      "type": "Reply",
+      "timestamp": "2026-07-02T10:00:00.000Z",
+      "timestampEdited": null,
+      "callEndedTimestamp": null,
+      "isPinned": false,
+      "content": "agreed",
+      "author": {
+        "id": "1005",
+        "name": "Eve",
+        "discriminator": "0000",
+        "nickname": "Eve",
+        "color": null,
+        "isBot": false,
+        "avatarUrl": ""
+      },
+      "attachments": [],
+      "embeds": [],
+      "stickers": [],
+      "reactions": [],
+      "mentions": [],
+      "reference": {
+        "messageId": "m6",
+        "channelId": "222",
+        "guildId": "111"
+      }
+    },
+    {
+      "id": "m10",
+      "type": "Default",
+      "timestamp": "2026-07-02T10:03:00.000Z",
+      "timestampEdited": null,
+      "callEndedTimestamp": null,
+      "isPinned": false,
+      "content": "orphan continuation with no visible author",
+      "author": {
+        "id": "",
+        "name": "",
+        "discriminator": "0000",
+        "nickname": "",
+        "color": null,
+        "isBot": false,
+        "avatarUrl": ""
+      },
+      "attachments": [],
+      "embeds": [],
+      "stickers": [],
+      "reactions": [],
+      "mentions": [],
+      "reference": null
+    },
+    {
+      "id": "m12",
+      "type": "Default",
+      "timestamp": "2026-07-02T10:05:00.000Z",
+      "timestampEdited": null,
+      "callEndedTimestamp": null,
+      "isPinned": false,
+      "content": "beep boop",
+      "author": {
+        "id": "1008",
+        "name": "CoolBot",
+        "discriminator": "0000",
+        "nickname": "CoolBot",
+        "color": null,
+        "isBot": true,
+        "avatarUrl": ""
+      },
+      "attachments": [],
+      "embeds": [],
+      "stickers": [],
+      "reactions": [],
+      "mentions": [],
+      "reference": null
+    }
+  ],
+  "messageCount": 10
+}

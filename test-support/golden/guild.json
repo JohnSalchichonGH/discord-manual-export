@@ -1,0 +1,233 @@
+{
+  "channel": {
+    "id": "222",
+    "name": "general",
+    "url": "https://discord.com/channels/111/222"
+  },
+  "capturedAt": "2026-07-10T00:00:00.000Z",
+  "session": {
+    "startedAt": "2026-07-01T08:59:00.000Z",
+    "stoppedAt": "2026-07-02T10:06:00.000Z",
+    "channelKey": "111/222",
+    "stoppedReason": "user"
+  },
+  "captureQuality": {
+    "rawCapturedCount": 12,
+    "exportedMessageCount": 10,
+    "systemMessagesSkipped": 2,
+    "missingAuthorCount": 1,
+    "missingTimestampCount": 1,
+    "replyLinksResolved": 1,
+    "replyLinksUnresolved": 1,
+    "highFidelityEnabled": false,
+    "highFidelityDataCaptured": true,
+    "highFidelityTransport": "off",
+    "mediaUrlCount": 2,
+    "warnings": [
+      "1 message(s) had no visible author — scroll over the group header and recapture, or enable High-fidelity.",
+      "1 message(s) had no timestamp (shown as \"unknown time\" in the transcript)."
+    ]
+  },
+  "messageCount": 10,
+  "messages": [
+    {
+      "id": "m11",
+      "author": "Grace",
+      "authorId": "1007",
+      "timestamp": null,
+      "editedTimestamp": null,
+      "content": "message with no timestamp",
+      "media": [],
+      "stickers": [],
+      "embeds": [],
+      "mentions": [],
+      "reactions": [],
+      "replyTo": null
+    },
+    {
+      "id": "m1",
+      "author": "Alice",
+      "authorId": "1001",
+      "timestamp": "2026-07-01T09:00:00.000Z",
+      "editedTimestamp": null,
+      "content": "Hello world",
+      "media": [],
+      "stickers": [],
+      "embeds": [],
+      "mentions": [],
+      "reactions": [
+        {
+          "emoji": "👍",
+          "count": 5,
+          "id": "",
+          "url": ""
+        },
+        {
+          "emoji": ":partyblob:",
+          "count": 1200,
+          "id": "9001",
+          "url": "https://cdn.discordapp.com/emojis/9001.gif"
+        }
+      ],
+      "replyTo": null,
+      "username": "alice_h"
+    },
+    {
+      "id": "m2",
+      "author": "Bob",
+      "authorId": "1002",
+      "timestamp": "2026-07-01T09:00:30.000Z",
+      "editedTimestamp": null,
+      "content": "Reply to Alice",
+      "media": [],
+      "stickers": [],
+      "embeds": [],
+      "mentions": [],
+      "reactions": [],
+      "replyTo": {
+        "author": "Alice",
+        "content": "Hello world",
+        "messageId": "m1"
+      },
+      "username": "bob_h"
+    },
+    {
+      "id": "m3",
+      "author": "Bob",
+      "authorId": "1002",
+      "timestamp": "2026-07-01T09:02:00.000Z",
+      "editedTimestamp": "2026-07-01T09:03:00.000Z",
+      "content": "Edited message",
+      "media": [],
+      "stickers": [],
+      "embeds": [],
+      "mentions": [],
+      "reactions": [],
+      "replyTo": null
+    },
+    {
+      "id": "m4",
+      "author": "Carol",
+      "authorId": "1003",
+      "timestamp": "2026-07-01T09:05:00.000Z",
+      "editedTimestamp": null,
+      "content": "Look at this",
+      "media": [
+        {
+          "type": "image",
+          "url": "https://cdn.discordapp.com/attachments/1/2/pic.png",
+          "filename": "pic.png"
+        },
+        {
+          "type": "gif",
+          "url": "https://media.tenor.com/abc.gif",
+          "filename": "abc.gif"
+        }
+      ],
+      "stickers": [],
+      "embeds": [],
+      "mentions": [],
+      "reactions": [],
+      "replyTo": null
+    },
+    {
+      "id": "m5",
+      "author": "Carol",
+      "authorId": "1003",
+      "timestamp": "2026-07-01T09:06:00.000Z",
+      "editedTimestamp": null,
+      "content": "",
+      "media": [],
+      "stickers": [
+        {
+          "id": "5001",
+          "name": "blobwave",
+          "format": "Apng",
+          "url": "https://media.discordapp.net/stickers/5001.png"
+        }
+      ],
+      "embeds": [],
+      "mentions": [],
+      "reactions": [],
+      "replyTo": null
+    },
+    {
+      "id": "m6",
+      "author": "Dave",
+      "authorId": "1004",
+      "timestamp": "2026-07-01T14:00:00.000Z",
+      "editedTimestamp": null,
+      "content": "check link",
+      "media": [],
+      "stickers": [],
+      "embeds": [
+        {
+          "title": "Example",
+          "url": "https://example.com",
+          "description": "An example description",
+          "provider": "Example",
+          "author": null,
+          "footer": "footer text",
+          "fields": [
+            {
+              "name": "Field 1",
+              "value": "Value 1"
+            }
+          ],
+          "imageUrl": "https://example.com/img.png"
+        }
+      ],
+      "mentions": [
+        "Alice"
+      ],
+      "reactions": [],
+      "replyTo": null
+    },
+    {
+      "id": "m7",
+      "author": "Eve",
+      "authorId": "1005",
+      "timestamp": "2026-07-02T10:00:00.000Z",
+      "editedTimestamp": null,
+      "content": "agreed",
+      "media": [],
+      "stickers": [],
+      "embeds": [],
+      "mentions": [],
+      "reactions": [],
+      "replyTo": {
+        "author": "Dave",
+        "content": "check link",
+        "messageId": null
+      }
+    },
+    {
+      "id": "m10",
+      "author": null,
+      "authorId": null,
+      "timestamp": "2026-07-02T10:03:00.000Z",
+      "editedTimestamp": null,
+      "content": "orphan continuation with no visible author",
+      "media": [],
+      "stickers": [],
+      "embeds": [],
+      "mentions": [],
+      "reactions": [],
+      "replyTo": null
+    },
+    {
+      "id": "m12",
+      "author": "CoolBot",
+      "authorId": "1008",
+      "timestamp": "2026-07-02T10:05:00.000Z",
+      "editedTimestamp": null,
+      "content": "beep boop",
+      "media": [],
+      "stickers": [],
+      "embeds": [],
+      "mentions": [],
+      "reactions": [],
+      "replyTo": null
+    }
+  ]
+}

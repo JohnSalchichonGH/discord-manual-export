@@ -1,0 +1,59 @@
+{
+  "channel": {
+    "id": "999",
+    "name": "Zoe",
+    "url": "https://discord.com/channels/@me/999"
+  },
+  "capturedAt": "2026-07-10T00:00:00.000Z",
+  "session": {
+    "startedAt": "2026-07-03T17:59:00.000Z",
+    "stoppedAt": "2026-07-03T18:02:00.000Z",
+    "channelKey": "@me/999",
+    "stoppedReason": "user"
+  },
+  "captureQuality": {
+    "rawCapturedCount": 2,
+    "exportedMessageCount": 2,
+    "systemMessagesSkipped": 0,
+    "missingAuthorCount": 0,
+    "missingTimestampCount": 0,
+    "replyLinksResolved": 0,
+    "replyLinksUnresolved": 0,
+    "highFidelityEnabled": false,
+    "highFidelityDataCaptured": false,
+    "highFidelityTransport": "off",
+    "mediaUrlCount": 0,
+    "warnings": []
+  },
+  "messageCount": 2,
+  "messages": [
+    {
+      "id": "d1",
+      "author": "Zoe",
+      "authorId": "2001",
+      "timestamp": "2026-07-03T18:00:00.000Z",
+      "editedTimestamp": null,
+      "content": "hey there",
+      "media": [],
+      "stickers": [],
+      "embeds": [],
+      "mentions": [],
+      "reactions": [],
+      "replyTo": null
+    },
+    {
+      "id": "d2",
+      "author": "Me",
+      "authorId": "2002",
+      "timestamp": "2026-07-03T18:01:00.000Z",
+      "editedTimestamp": null,
+      "content": "hello!",
+      "media": [],
+      "stickers": [],
+      "embeds": [],
+      "mentions": [],
+      "reactions": [],
+      "replyTo": null
+    }
+  ]
+}

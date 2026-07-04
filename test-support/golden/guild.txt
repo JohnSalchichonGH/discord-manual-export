@@ -1,0 +1,37 @@
+Export warnings:
+- 1 message(s) had no visible author — scroll over the group header and recapture, or enable High-fidelity.
+- 1 message(s) had no timestamp (shown as "unknown time" in the transcript).
+
+[unknown time] Grace:
+  message with no timestamp
+
+=== Wednesday, Jul 1, 2026 ===
+
+[9:00 AM] Alice:
+  Hello world ^{👍:5} ^{:partyblob::1200}
+
+[+30s] Bob:
+  > Alice: Hello world
+  Reply to Alice
+  Edited message
+
+[+3m] Carol:
+  Look at this
+  [IMG]
+  [GIF]
+  [STICKER: blobwave]
+
+[+4h] Dave:
+  check link
+
+=== Thursday, Jul 2, 2026 ===
+
+[10:00 AM] Eve:
+  > Dave: check link
+  agreed
+
+[+3m] Unknown:
+  orphan continuation with no visible author
+
+[+2m] CoolBot:
+  beep boop

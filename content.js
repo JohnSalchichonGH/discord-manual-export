@@ -15,12 +15,101 @@
  *
  * You scroll the channel by hand; the observer notices when Discord renders new
  * messages and harvests them from the DOM. Deduped by message id.
+ *
+ * Layout (pure, DOM-free helpers live in lib.js; see window.__DME below):
+ *   1. Discord DOM selectors  — SEL: the hashed class selectors, centralized
+ *   2. capture state          — the store Map + session/channel state
+ *   3. fiber transport        — opt-in high-fidelity MessagePort plumbing
+ *   4. extraction helpers      — read one <li> → a message record's fields
+ *   5. capture                 — MutationObserver lifecycle (start/stop/capture)
+ *   6. export builders         — channel/identity scrape, filename, JSON/DCE
+ *   7. transcript              — plain-text builder (adapter over lib.js)
+ *   8. popup messaging         — state(), healthCheck(), the onMessage router
  */
 
 (() => {
   "use strict";
   if (window.__discordManualExport) return;
+  // Pure, DOM-free helpers live in lib.js (loaded first — see manifest
+  // content_scripts.js order) and are exposed on window.__DME in this
+  // extension's isolated world, so Node can also unit-test them. Everything
+  // below is DOM-, location-, or capture-state-bound and stays here.
+  //
+  // Fail safe: if lib.js somehow didn't run (it always does, given the manifest
+  // order), bail out cleanly BEFORE touching window.__DME. This runs in the
+  // isolated world — invisible to Discord — but we still never want to surface
+  // an uncaught error, so a missing lib makes the content script inert, not throw.
+  if (!window.__DME) return;
   window.__discordManualExport = true;
+
+  const {
+    rgbToHex, parseCount, userIdFromAvatar, replyScore, exportStamp,
+    sanitizeFilePart, splitNameHandle, resolveReferenceId, SYSTEM_TYPES,
+    STICKER_FORMAT, MEDIA_HOST, GIF_HOST, MEDIA_EXT,
+    // export transforms (pure) — the builders below are thin adapters over these
+    cleanMessage, dceMessage, renderTranscript, diagnostics,
+  } = window.__DME;
+
+  /* ---------------- Discord DOM selectors (hashed → brittle; centralized) ----
+   * Discord ships obfuscated, hashed class names, so we match on stable
+   * substrings/prefixes. When Discord changes its DOM this is the ONE place to
+   * update. Plain-HTML selectors (br, img[alt], time[datetime], a[href], video,
+   * source, [data-id], …) are left inline at their call sites — they don't rot. */
+  const SEL = {
+    // message list + nodes
+    chatList: '[data-list-id="chat-messages"]',
+    chatMessage: 'li[id^="chat-messages-"]',
+    scroller: '[class*="scroller"]',
+    // author / meta
+    username: '[class*="username"]',
+    avatar: 'img[class*="avatar"]',
+    botTag: '[class*="botTag"]',
+    systemMessage: '[class*="systemMessage"]',
+    mention: '[class*="mention"]',
+    // content / edit markers
+    messageContent: '[id^="message-content-"]',
+    edited: '[class*="edited"]',
+    editedOrHidden: '[class*="edited"], [class*="hiddenVisually"]',
+    // reactions
+    reactions: '[class*="reactions"]',
+    reactionInner: '[class*="reactionInner"]',
+    reactionCount: '[class*="reactionCount"]',
+    // replies
+    replyContext: '[id^="message-reply-context-"]',
+    repliedMessage: '[class*="repliedMessage"]',
+    repliedTextContent: '[class*="repliedTextContent"]',
+    repliedTextPreview: '[class*="repliedTextPreview"]',
+    // accessories: media / stickers / embeds
+    accessories: '[id^="message-accessories-"]',
+    sticker: '[data-type="sticker"], [class*="stickerAsset"]',
+    embedFull: '[class*="embedFull"]',
+    embedTitle: '[class*="embedTitle"]',
+    embedDescription: '[class*="embedDescription"]',
+    embedProvider: '[class*="embedProvider"]',
+    embedAuthor: '[class*="embedAuthor"]',
+    embedFooter: '[class*="embedFooter"]',
+    embedField: '[class*="embedField"]',
+    embedFieldName: '[class*="embedFieldName"]',
+    embedFieldValue: '[class*="embedFieldValue"]',
+    embedImageOrThumb: '[class*="embedImage"], [class*="embedThumbnail"]',
+    embedOriginalLink: 'a[class*="originalLink"]',
+    // headers / identity scraping
+    titleWrapper: '[class*="titleWrapper"]',
+    title: '[class*="title_"]',
+    titleSection: 'section[class*="title"]',
+    titleH1: '[class*="title_"] h1',
+    h1Title: 'h1[class*="title"]',
+    panels: '[class*="panels_"]',
+    panelsSection: 'section[class*="panels"]',
+    // sidebar guild-name candidates (first non-channel-name match wins)
+    guildNameCandidates: [
+      '[class*="headerContent"]',
+      '[class*="guildName"]',
+      '[class*="nameAndDecorators"]',
+    ],
+  };
+
+  /* ---------------- capture state ---------------- */
 
   const store = new Map(); // messageId -> record
   let observer = null;
@@ -38,6 +127,8 @@
     const m = location.pathname.match(/channels\/([^/]+)\/([^/]+)/);
     return m ? m[1] + "/" + m[2] : location.href;
   }
+
+  /* ---------------- high-fidelity fiber transport ---------------- */
 
   // Opt-in high-fidelity layer: the MAIN-world fiber reader (injected by the
   // popup only when enabled) returns richer per-message data. Data flows over a
@@ -147,7 +238,7 @@
     // hiddenVisually spans carry things like the edit-tooltip date and the
     // "<guild>:" prefix in channel headers).
     clone
-      .querySelectorAll('[class*="edited"], [class*="hiddenVisually"]')
+      .querySelectorAll(SEL.editedOrHidden)
       .forEach((e) => e.remove());
     // Preserve hard line breaks (textContent doesn't include <br> newlines).
     clone.querySelectorAll("br").forEach((br) => {
@@ -161,13 +252,13 @@
 
   function isInReplyContext(el) {
     return !!(
-      el.closest('[id^="message-reply-context-"]') ||
-      el.closest('[class*="repliedMessage"]')
+      el.closest(SEL.replyContext) ||
+      el.closest(SEL.repliedMessage)
     );
   }
 
   function getAuthorEl(li) {
-    const els = li.querySelectorAll('[class*="username"]');
+    const els = li.querySelectorAll(SEL.username);
     for (const el of els) {
       if (isInReplyContext(el)) continue;
       return el;
@@ -176,7 +267,7 @@
   }
 
   function getAvatarUrl(li) {
-    const imgs = li.querySelectorAll('img[class*="avatar"]');
+    const imgs = li.querySelectorAll(SEL.avatar);
     for (const img of imgs) {
       if (isInReplyContext(img)) continue;
       const src = img.getAttribute("src");
@@ -186,28 +277,9 @@
   }
 
   // Role color is an inline color on the name element (only set for colored
-  // roles). Convert Discord's "rgb(r, g, b)" to the hex DCE expects, else null.
-  function rgbToHex(rgb) {
-    const m = (rgb || "").match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/);
-    if (!m) return null;
-    const h = (n) => Number(n).toString(16).padStart(2, "0");
-    return "#" + h(m[1]) + h(m[2]) + h(m[3]);
-  }
-
+  // roles). rgbToHex (lib.js) converts Discord's "rgb(r, g, b)" to hex.
   function getRoleColor(authEl) {
     return authEl && authEl.style ? rgbToHex(authEl.style.color) : null;
-  }
-
-  // Custom-avatar URLs embed the numeric user id:
-  //   cdn.discordapp.com/avatars/<userId>/<hash>.webp
-  //   cdn.discordapp.com/guilds/<gid>/users/<userId>/avatars/<hash>.webp
-  // Default avatars (embed/avatars/<n>.png) carry no id, so this returns null.
-  function userIdFromAvatar(url) {
-    if (!url) return null;
-    let m = url.match(/\/users\/(\d+)\/avatars\//);
-    if (m) return m[1];
-    m = url.match(/\/avatars\/(\d+)\//);
-    return m ? m[1] : null;
   }
 
   function getTimestamp(li) {
@@ -219,22 +291,11 @@
     return times[0] ? times[0].getAttribute("datetime") : null;
   }
 
-  // Reaction counts can be abbreviated ("1.2K"); parse that back to a number.
-  function parseCount(text) {
-    const m = (text || "").trim().match(/([\d.,]+)\s*([km]?)/i);
-    if (!m) return 1;
-    let n = parseFloat(m[1].replace(/,/g, ""));
-    if (isNaN(n)) return 1;
-    if (/k/i.test(m[2])) n *= 1000;
-    else if (/m/i.test(m[2])) n *= 1e6;
-    return Math.round(n) || 1;
-  }
-
   function getReactions(li) {
     const out = [];
-    const cont = li.querySelector('[class*="reactions"]');
+    const cont = li.querySelector(SEL.reactions);
     if (!cont) return out;
-    cont.querySelectorAll('[class*="reactionInner"]').forEach((inner) => {
+    cont.querySelectorAll(SEL.reactionInner).forEach((inner) => {
       const img = inner.querySelector("img[alt]");
       let emoji = img ? img.getAttribute("alt") || "" : "";
       if (!emoji) {
@@ -252,7 +313,7 @@
           url = src;
         }
       }
-      const countEl = inner.querySelector('[class*="reactionCount"]');
+      const countEl = inner.querySelector(SEL.reactionCount);
       const count = countEl ? parseCount(countEl.textContent) : 1;
       if (emoji) out.push({ emoji, count, id, url });
     });
@@ -261,16 +322,16 @@
 
   function getReply(li) {
     const ctx =
-      li.querySelector('[id^="message-reply-context-"]') ||
-      li.querySelector('[class*="repliedMessage"]');
+      li.querySelector(SEL.replyContext) ||
+      li.querySelector(SEL.repliedMessage);
     if (!ctx) return null;
-    const authEl = ctx.querySelector('[class*="username"]');
+    const authEl = ctx.querySelector(SEL.username);
     const contentEl =
-      ctx.querySelector('[class*="repliedTextContent"]') ||
-      ctx.querySelector('[class*="repliedTextPreview"]');
+      ctx.querySelector(SEL.repliedTextContent) ||
+      ctx.querySelector(SEL.repliedTextPreview);
     // The preview reuses the referenced message's own message-content-<id>
     // element, so its id is the exact replied-to message id.
-    const idEl = ctx.querySelector('[id^="message-content-"]');
+    const idEl = ctx.querySelector(SEL.messageContent);
     const messageId = idEl ? idEl.id.replace("message-content-", "") : null;
     const author = authEl ? extractText(authEl) : null;
     const content = contentEl ? extractText(contentEl) : null;
@@ -278,25 +339,11 @@
     return { author, content, messageId };
   }
 
-  // Reply previews load lazily; a message snapshotted too early shows a
-  // placeholder ("Message could not be loaded") or an unresolved "@unknown-user"
-  // mention. Score completeness so a later, fuller capture can replace it.
-  function replyScore(r) {
-    if (!r) return -1;
-    const c = (r.content || "").trim();
-    let s = 0;
-    if (r.messageId) s += 3; // the authoritative signal — weight it highest
-    if (r.author) s += 1;
-    if (c) s += 1;
-    if (c && !/could not be loaded|unknown-user/i.test(c)) s += 1;
-    return s;
-  }
+  // (replyScore lives in lib.js — scores reply-preview completeness so a later,
+  // fuller capture can replace a lazily-loaded placeholder.)
 
-  // Attachments/media live in <div id="message-accessories-…">. We only trust
-  // Discord's own CDN/proxy hosts, which filters out UI icons and external links.
-  const MEDIA_HOST = /(^|\.)discordapp\.(com|net)$/;
-  const GIF_HOST = /(^|\.)(tenor|giphy|klipy|gfycat)\.com$/;
-
+  // Attachments/media live in <div id="message-accessories-…">. Host allowlists
+  // (MEDIA_HOST/GIF_HOST) and MEDIA_EXT live in lib.js.
   function fileNameFromUrl(u) {
     try {
       const p = new URL(u, location.href).pathname;
@@ -308,7 +355,7 @@
   }
 
   function getMedia(li) {
-    const acc = li.querySelector('[id^="message-accessories-"]');
+    const acc = li.querySelector(SEL.accessories);
     if (!acc) return [];
     const byKey = new Map(); // dedupe by URL pathname (proxy + original are one file)
     const prio = { gif: 4, video: 3, image: 2, file: 1 };
@@ -363,7 +410,6 @@
     let items = [...byKey.values()];
     // A GIF embed yields both the real media file and its source-page link
     // (e.g. klipy.com/gifs/x). If we captured an actual file, drop gif page links.
-    const MEDIA_EXT = /\.(mp4|webm|mov|gif|png|jpe?g|webp|apng)$/i;
     const hasRealFile = items.some((i) => MEDIA_EXT.test(i.filename || ""));
     if (hasRealFile) {
       items = items.filter(
@@ -373,18 +419,10 @@
     return items;
   }
 
-  function mediaTag(m) {
-    if (m.type === "gif") return "[GIF]";
-    if (m.type === "image") return "[IMG]";
-    if (m.type === "video") return "[VIDEO]";
-    if (m.type === "file") return "[FILE]";
-    return "[MEDIA]";
-  }
-
   // Exact edit time: the "(edited)" marker is wrapped in a <time datetime=…>.
   function getEditedTimestamp(li) {
     const contentEl = getContentEl(li);
-    const ed = contentEl && contentEl.querySelector('[class*="edited"]');
+    const ed = contentEl && contentEl.querySelector(SEL.edited);
     const t = ed && ed.closest("time[datetime]");
     return t ? t.getAttribute("datetime") : null;
   }
@@ -395,7 +433,7 @@
     if (!contentEl) return [];
     const out = [];
     const seen = new Set();
-    contentEl.querySelectorAll('[class*="mention"]').forEach((m) => {
+    contentEl.querySelectorAll(SEL.mention).forEach((m) => {
       let t = (m.textContent || "").trim();
       if (t[0] !== "@") return; // skip #channel and non-user mentions
       t = t.slice(1).trim();
@@ -407,15 +445,14 @@
     return out;
   }
 
-  const STICKER_FORMAT = { 1: "Png", 2: "Apng", 3: "Lottie", 4: "Gif" };
   function getStickers(li) {
-    const acc = li.querySelector('[id^="message-accessories-"]');
+    const acc = li.querySelector(SEL.accessories);
     if (!acc) return [];
     const out = [];
     const seen = new Set();
     // Sticker assets carry clean data-* attributes (data-id / data-name / format).
     acc
-      .querySelectorAll('[data-type="sticker"], [class*="stickerAsset"]')
+      .querySelectorAll(SEL.sticker)
       .forEach((el) => {
         const d = el.hasAttribute("data-id") ? el : el.closest("[data-id]");
         const id = d ? d.getAttribute("data-id") : null;
@@ -442,25 +479,25 @@
   // Rich embeds (link previews / bot embeds). Skips pure-media (gifv) embeds,
   // which are already captured as media. Emits nothing unless a title/desc is found.
   function getEmbeds(li) {
-    const acc = li.querySelector('[id^="message-accessories-"]');
+    const acc = li.querySelector(SEL.accessories);
     if (!acc) return [];
     const out = [];
-    acc.querySelectorAll('[class*="embedFull"]').forEach((em) => {
-      const titleEl = em.querySelector('[class*="embedTitle"]');
-      const descEl = em.querySelector('[class*="embedDescription"]');
+    acc.querySelectorAll(SEL.embedFull).forEach((em) => {
+      const titleEl = em.querySelector(SEL.embedTitle);
+      const descEl = em.querySelector(SEL.embedDescription);
       const title = titleEl ? extractText(titleEl) : null;
       const description = descEl ? extractText(descEl) : null;
       if (!title && !description) return; // pure media embed — already in media
       const anchor =
         (titleEl && titleEl.querySelector("a[href]")) ||
         (titleEl && titleEl.closest("a[href]"));
-      const providerEl = em.querySelector('[class*="embedProvider"]');
-      const authorEl = em.querySelector('[class*="embedAuthor"]');
-      const footerEl = em.querySelector('[class*="embedFooter"]');
+      const providerEl = em.querySelector(SEL.embedProvider);
+      const authorEl = em.querySelector(SEL.embedAuthor);
+      const footerEl = em.querySelector(SEL.embedFooter);
       const fields = [];
-      em.querySelectorAll('[class*="embedField"]').forEach((f) => {
-        const n = f.querySelector('[class*="embedFieldName"]');
-        const v = f.querySelector('[class*="embedFieldValue"]');
+      em.querySelectorAll(SEL.embedField).forEach((f) => {
+        const n = f.querySelector(SEL.embedFieldName);
+        const v = f.querySelector(SEL.embedFieldValue);
         if (n || v)
           fields.push({
             name: n ? extractText(n) : "",
@@ -468,11 +505,11 @@
           });
       });
       const imgWrap = em.querySelector(
-        '[class*="embedImage"], [class*="embedThumbnail"]'
+        SEL.embedImageOrThumb
       );
       let imageUrl = null;
       if (imgWrap) {
-        const orig = imgWrap.querySelector('a[class*="originalLink"]');
+        const orig = imgWrap.querySelector(SEL.embedOriginalLink);
         const img = imgWrap.querySelector("img");
         imageUrl =
           (orig && orig.getAttribute("href")) ||
@@ -496,7 +533,7 @@
   // Discord's reply preview reuses the referenced message's message-content div
   // (rendered BEFORE the body), so skip anything inside the reply context.
   function getContentEl(li) {
-    const els = li.querySelectorAll('[id^="message-content-"]');
+    const els = li.querySelectorAll(SEL.messageContent);
     for (const el of els) {
       if (isInReplyContext(el)) continue;
       return el;
@@ -515,7 +552,7 @@
   /* ---------------- capture ---------------- */
 
   function getList() {
-    return document.querySelector('[data-list-id="chat-messages"]');
+    return document.querySelector(SEL.chatList);
   }
 
   function capture() {
@@ -530,7 +567,7 @@
     }
     const list = getList();
     if (!list) return;
-    const items = list.querySelectorAll('li[id^="chat-messages-"]');
+    const items = list.querySelectorAll(SEL.chatMessage);
     let currentAuthor = null;
     let currentAuthorId = null;
     let currentAvatar = null;
@@ -546,7 +583,7 @@
         currentAuthorId = userIdFromAvatar(currentAvatar);
         currentColor = getRoleColor(authEl);
         // Exclude the reply preview so replying to a bot doesn't mark you a bot.
-        currentIsBot = [...li.querySelectorAll('[class*="botTag"]')].some(
+        currentIsBot = [...li.querySelectorAll(SEL.botTag)].some(
           (e) => !isInReplyContext(e)
         );
       }
@@ -571,7 +608,7 @@
         mentions: getMentions(li),
         reactions: getReactions(li),
         replyTo: getReply(li),
-        isSystem: !!li.querySelector('[class*="systemMessage"]'),
+        isSystem: !!li.querySelector(SEL.systemMessage),
       };
 
       const existing = store.get(id);
@@ -590,7 +627,7 @@
         // message shows a reactions bar (present-but-empty = all removed); but if
         // no reactions container rendered this pass, keep what we had rather than
         // wipe a good set during a partial/lazy re-render.
-        if (record.reactions.length || li.querySelector('[class*="reactions"]'))
+        if (record.reactions.length || li.querySelector(SEL.reactions))
           existing.reactions = record.reactions;
         if (record.media.length && !existing.media.length)
           existing.media = record.media;
@@ -653,7 +690,7 @@
     };
     const list = getList();
     const target =
-      (list && (list.closest('[class*="scroller"]') || list.parentElement)) ||
+      (list && (list.closest(SEL.scroller) || list.parentElement)) ||
       document.getElementById("app-mount") ||
       document.body;
     observer = new MutationObserver(debouncedCapture);
@@ -686,7 +723,8 @@
   // Discord's message header renders the DISPLAY name, not the account username.
   // The real @handle only appears in a few places (DM header, account panel),
   // which we scrape here to fill author.name. Everything is local DOM reading.
-  const HANDLE_RE = /^[a-z0-9._]{2,32}$/;
+  // (HANDLE_RE + splitNameHandle — the pure "split display name from handle"
+  // logic — live in lib.js; the DOM scraping below stays here.)
 
   // Text of every leaf element under `el`, in document order.
   function leafTexts(el) {
@@ -704,24 +742,11 @@
     return out;
   }
 
-  // From a [displayName, handle, ...maybe status] leaf list, split the two.
-  function splitNameHandle(leaves) {
-    const displayName = leaves[0] || null;
-    let username = null;
-    for (let i = 1; i < leaves.length; i++) {
-      if (HANDLE_RE.test(leaves[i]) && leaves[i] !== displayName) {
-        username = leaves[i];
-        break;
-      }
-    }
-    return { displayName, username };
-  }
-
   function dmHeaderInfo() {
     const sels = [
-      '[class*="titleWrapper"]',
-      '[class*="title_"]',
-      'section[class*="title"]',
+      SEL.titleWrapper,
+      SEL.title,
+      SEL.titleSection,
     ];
     let fallback = null;
     for (const s of sels) {
@@ -736,8 +761,8 @@
 
   function accountPanelInfo() {
     const panel =
-      document.querySelector('[class*="panels_"]') ||
-      document.querySelector('section[class*="panels"]');
+      document.querySelector(SEL.panels) ||
+      document.querySelector(SEL.panelsSection);
     if (!panel) return null;
     const info = splitNameHandle(leafTexts(panel));
     return info.displayName ? info : null;
@@ -766,8 +791,8 @@
     }
     if (!name) {
       const titleEl =
-        document.querySelector('[class*="title_"] h1') ||
-        document.querySelector('h1[class*="title"]');
+        document.querySelector(SEL.titleH1) ||
+        document.querySelector(SEL.h1Title);
       // extractText drops the hidden "<guild>:" accessibility prefix, leaving
       // just the visible channel name.
       if (titleEl) name = extractText(titleEl);
@@ -781,17 +806,9 @@
     return liveChannelInfo();
   }
 
-  // System/notification messages (pins, joins, boosts, …) — dropped from exports.
-  // Authoritative signal is the numeric message type (from the fiber reader);
-  // a DOM class is the fallback when high-fidelity is off.
-  // Known system/notification types. Content types (0 Default, 19 Reply,
-  // 20 ChatInputCommand, 21 ThreadStarterMessage, 23 ContextMenuCommand) are kept;
-  // unknown types are kept too (better than dropping a future content type).
-  const SYSTEM_TYPES = new Set([
-    1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 14, 15, 16, 17, 18, 22, 24, 25, 26, 27,
-    28, 29, 31, 32, 36, 37, 38, 39, 44, 46,
-  ]);
-
+  // System/notification messages (pins, joins, boosts, …) are dropped from
+  // exports. The authoritative signal is the numeric message type from the fiber
+  // reader; a DOM class is the fallback. The SYSTEM_TYPES set lives in lib.js.
   function isSystemMessage(r) {
     if (r.isSystem) return true;
     const f = fiberStore.get(r.id);
@@ -804,31 +821,8 @@
       .sort((a, b) => (a.timestamp || "").localeCompare(b.timestamp || ""));
   }
 
-  function pad2(n) {
-    return String(n).padStart(2, "0");
-  }
-
-  // Local date+time, filename-safe (no colons). The time makes each capture's
-  // filename unique, so re-importing several captures of one channel never lets
-  // one file supersede another by name (which would drop the earlier capture's
-  // messages before dedup runs). Local, not UTC: this is only a human-readable
-  // label, and it reads naturally next to when you clicked export. The instants
-  // INSIDE the JSON stay UTC (Discord's `Z` timestamps) so dedup is unambiguous.
-  function exportStamp() {
-    const d = new Date();
-    return (
-      `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}` +
-      `_${pad2(d.getHours())}-${pad2(d.getMinutes())}-${pad2(d.getSeconds())}`
-    );
-  }
-
-  // Strip characters not allowed in filenames.
-  function sanitizeFilePart(s) {
-    return (s || "")
-      .replace(/[\\/:*?"<>|\r\n\t]+/g, "")
-      .replace(/\s+/g, " ")
-      .trim();
-  }
+  // (pad2, exportStamp, and sanitizeFilePart — the pure filename-formatting
+  // helpers — live in lib.js.)
 
   // DCE-style filename, with a per-capture timestamp so each export is uniquely
   // named (see exportStamp — prevents a re-import from dropping an earlier
@@ -847,63 +841,19 @@
     return `${prefix} - ${exportStamp()} [${channel.id || "channel"}].${ext}`;
   }
 
-  // The documented, clean shape (excludes internal-only fields like avatarUrl).
-  function cleanMessage(r) {
-    return {
-      id: r.id,
-      author: r.author,
-      authorId: r.authorId,
-      timestamp: r.timestamp,
-      editedTimestamp: r.editedTimestamp || null,
-      content: r.content,
-      media: r.media,
-      stickers: r.stickers || [],
-      embeds: r.embeds || [],
-      mentions: r.mentions || [],
-      reactions: r.reactions,
-      // copy so enriching the export can't mutate the stored record
-      replyTo: r.replyTo ? { ...r.replyTo } : null,
-    };
-  }
+  // (cleanMessage — the clean JSON shape — lives in lib.js.)
 
-  // Export diagnostics so the user can see what might be incomplete.
+  // Export diagnostics adapter: supplies the pure diagnostics() (lib.js) with the
+  // state it can't derive from the message list — raw store size, high-fidelity
+  // flags/transport, and a health warning.
   function captureDiagnostics(messages) {
-    const replies = messages.filter((m) => m.replyTo);
-    const resolved = replies.filter((m) => m.replyTo && m.replyTo.messageId).length;
-    const missingAuthor = messages.filter((m) => !m.author).length;
-    const missingTs = messages.filter((m) => !m.timestamp).length;
-    const warnings = [];
-    if (missingAuthor)
-      warnings.push(
-        `${missingAuthor} message(s) had no visible author — scroll over the group header and recapture, or enable High-fidelity.`
-      );
-    if (missingTs)
-      warnings.push(
-        `${missingTs} message(s) had no timestamp (shown as "unknown time" in the transcript).`
-      );
-    if (store.size > 25000)
-      warnings.push(
-        "Large capture — exports are built as one in-memory string and may be memory-heavy."
-      );
-    const h = healthCheck();
-    if (h) warnings.push(h);
-    return {
+    return diagnostics(messages, {
       rawCapturedCount: store.size,
-      exportedMessageCount: messages.length,
-      systemMessagesSkipped: store.size - messages.length,
-      missingAuthorCount: missingAuthor,
-      missingTimestampCount: missingTs,
-      replyLinksResolved: resolved,
-      replyLinksUnresolved: replies.length - resolved,
       highFidelityEnabled: fiberEnabled,
       highFidelityDataCaptured: fiberStore.size > 0,
       highFidelityTransport: fiberTransport(),
-      mediaUrlCount: messages.reduce(
-        (n, m) => n + ((m.media && m.media.length) || 0),
-        0
-      ),
-      warnings,
-    };
+      healthWarning: healthCheck(),
+    });
   }
 
   function buildJsonString() {
@@ -965,12 +915,7 @@
     // Best-effort guild name from the sidebar header. Avoid the channel header
     // (which holds the channel name) by rejecting a value equal to ch.name.
     let guildName = "";
-    const gCandidates = [
-      '[class*="headerContent"]',
-      '[class*="guildName"]',
-      '[class*="nameAndDecorators"]',
-    ];
-    for (const s of gCandidates) {
+    for (const s of SEL.guildNameCandidates) {
       const el = document.querySelector(s);
       const t = el ? extractText(el) : ""; // extractText drops hidden a11y text
       if (t && t !== (ch.name || "")) {
@@ -991,131 +936,12 @@
     };
   }
 
-  function dceEmoji(r) {
-    // r.emoji is a unicode char or ":name:" for custom emoji; id/url come from
-    // the reaction image when it's a custom emoji.
-    const name = r.emoji.replace(/^:|:$/g, "");
-    return {
-      id: r.id || "",
-      name,
-      code: "",
-      isAnimated: /\.gif(\?|$)/i.test(r.url || ""),
-      imageUrl: r.url || "",
-    };
-  }
+  // (dceMessage — one record → a DCE-compatible message object — plus dceEmoji
+  // and the DCE_TYPE table live in lib.js.)
 
-  // Non-system message types → DCE's type strings (system types are filtered out).
-  const DCE_TYPE = {
-    0: "Default",
-    19: "Reply",
-    20: "ChatInputCommand",
-    21: "ThreadStarterMessage",
-    23: "ContextMenuCommand",
-  };
-
-  function dceMessage(r, guildId, channelId, usernameMap, fib) {
-    const display = r.author || "";
-    // name = account @handle: prefer the fiber reader's exact username, then the
-    // DM-header/panel scrape, else fall back to the display name.
-    const username =
-      (fib && fib.username) || (usernameMap && usernameMap.get(display)) || display;
-    return {
-      id: r.id,
-      // Exact type from the fiber reader when available, else the reply heuristic.
-      type: (fib && DCE_TYPE[fib.type]) || (r.replyTo ? "Reply" : "Default"),
-      timestamp: r.timestamp,
-      timestampEdited: (fib && fib.editedTimestamp) || r.editedTimestamp || null,
-      callEndedTimestamp: null,
-      isPinned: false,
-      content: r.content || "",
-      author: {
-        id: (fib && fib.authorId) || r.authorId || "",
-        name: username,
-        discriminator: (fib && fib.discriminator) || "0000",
-        nickname: display,
-        color: r.color || null,
-        isBot: !!r.isBot,
-        avatarUrl: r.avatarUrl || "",
-      },
-      attachments: (r.media || []).map((mm) => ({
-        id: "",
-        url: mm.url || "",
-        fileName: mm.filename || "",
-        fileSizeBytes: 0,
-      })),
-      embeds: (r.embeds || []).map((e) => ({
-        title: e.title || "",
-        url: e.url || "",
-        timestamp: null,
-        description: e.description || "",
-        color: null,
-        author:
-          e.author || e.provider
-            ? { name: e.author || e.provider, url: "", iconUrl: "" }
-            : null,
-        thumbnail: e.imageUrl ? { url: e.imageUrl } : null,
-        images: [],
-        fields: (e.fields || []).map((f) => ({
-          name: f.name || "",
-          value: f.value || "",
-          isInline: false,
-        })),
-        footer: e.footer ? { text: e.footer, iconUrl: "" } : null,
-        inlineEmojis: [],
-      })),
-      stickers: (r.stickers || []).map((s) => ({
-        id: s.id || "",
-        name: s.name || "",
-        format: s.format || "",
-        sourceUrl: s.url || "",
-      })),
-      reactions: (r.reactions || []).map((rc) => ({
-        emoji: dceEmoji(rc),
-        count: rc.count,
-      })),
-      mentions: (r.mentions || []).map((n) => ({
-        id: "",
-        name: n,
-        discriminator: "0000",
-        nickname: n,
-      })),
-      reference: r.replyTo
-        ? { messageId: "", channelId, guildId }
-        : null,
-    };
-  }
-
-  // Discord doesn't put the referenced message's id in the DOM. If the replied-to
-  // message was itself captured, resolve the link locally by matching the reply
-  // preview (author + text) against earlier messages. Purely local, no network.
-  function normText(s) {
-    return (s || "").replace(/\s+/g, " ").trim();
-  }
-  function normAuthor(s) {
-    return (s || "").replace(/^@/, "").trim();
-  }
-
-  function resolveReferenceId(rec, all) {
-    if (!rec.replyTo) return "";
-    const who = normAuthor(rec.replyTo.author);
-    let preview = normText(rec.replyTo.content).replace(/(?:…|\.\.\.)+$/, "").trim();
-    if (!preview) return "";
-    const t = rec.timestamp ? Date.parse(rec.timestamp) : Infinity;
-    let best = null;
-    let bestT = -Infinity;
-    for (const m of all) {
-      if (m.id === rec.id) continue;
-      if (who && normAuthor(m.author) !== who) continue;
-      const cf = normText(m.content);
-      if (!cf || !cf.startsWith(preview)) continue; // preview is a (possibly truncated) prefix
-      const mt = m.timestamp ? Date.parse(m.timestamp) : -Infinity;
-      if (mt <= t && mt >= bestT) {
-        best = m;
-        bestT = mt;
-      }
-    }
-    return best ? best.id : "";
-  }
+  // Discord doesn't put the referenced message's id in the DOM. resolveReferenceId
+  // (lib.js) resolves the link locally by matching the reply preview
+  // (author + text) against earlier captured messages. Purely local, no network.
 
   function buildDceJson() {
     const { guild, channel } = dceGuildChannel();
@@ -1152,112 +978,12 @@
     );
   }
 
-  /* transcript */
-
-  function fmtTime(d) {
-    let h = d.getHours();
-    const m = d.getMinutes();
-    const ap = h < 12 ? "AM" : "PM";
-    h = h % 12;
-    if (h === 0) h = 12;
-    return `${h}:${String(m).padStart(2, "0")} ${ap}`;
-  }
-
-  function fmtDate(d) {
-    return d.toLocaleDateString("en-US", {
-      weekday: "long",
-      month: "short",
-      day: "numeric",
-      year: "numeric",
-    });
-  }
-
-  function fmtDelta(ms) {
-    const s = Math.round(ms / 1000);
-    if (s < 60) return `+${s}s`;
-    const m = Math.floor(s / 60);
-    if (m < 60) return `+${m}m`;
-    const h = Math.floor(m / 60);
-    if (h < 24) return `+${h}h`;
-    return `+${Math.floor(h / 24)}d`;
-  }
-
-  function dayKey(d) {
-    return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
-  }
-
-  function oneLine(s) {
-    return (s || "").replace(/\s*\n\s*/g, " ").trim();
-  }
-
-  function messageLines(msg) {
-    const out = [];
-    if (msg.replyTo) {
-      const who = msg.replyTo.author || "?";
-      out.push(`  > ${who}: ${oneLine(msg.replyTo.content)}`.trimEnd());
-    }
-    const reactions = (msg.reactions || [])
-      .map((r) => `^{${r.emoji}:${r.count}}`)
-      .join(" ");
-    const body = [];
-    if ((msg.content || "") !== "")
-      msg.content.split("\n").forEach((l) => body.push(l));
-    (msg.media || []).forEach((m) => body.push(mediaTag(m)));
-    (msg.stickers || []).forEach((s) =>
-      body.push(`[STICKER: ${s.name || "sticker"}]`)
-    );
-
-    if (body.length === 0) {
-      if (reactions) out.push(`  ${reactions}`);
-    } else {
-      body.forEach((line, i) => {
-        const isLast = i === body.length - 1;
-        out.push(`  ${line}${isLast && reactions ? " " + reactions : ""}`);
-      });
-    }
-    return out;
-  }
+  /* transcript (messageLines + renderTranscript formatting live in lib.js) */
 
   function buildTranscript() {
     const messages = sortedMessages(); // never drop captured messages
-    const lines = [];
-    let prevDate = null;
-    let prevDayKey = null;
-    let curAuthor = null;
-
-    messages.forEach((msg) => {
-      const d = msg.timestamp ? new Date(msg.timestamp) : null;
-      const newDay = !!d && dayKey(d) !== prevDayKey;
-
-      if (newDay) {
-        if (lines.length) lines.push("");
-        lines.push(`=== ${fmtDate(d)} ===`);
-        prevDayKey = dayKey(d);
-        curAuthor = null;
-      }
-
-      const startNew = newDay || msg.author !== curAuthor || !!msg.replyTo;
-      if (startNew) {
-        lines.push("");
-        const stamp = !d
-          ? "unknown time"
-          : prevDate && !newDay
-          ? fmtDelta(d - prevDate)
-          : fmtTime(d);
-        lines.push(`[${stamp}] ${msg.author || "Unknown"}:`);
-        curAuthor = msg.author;
-      }
-
-      messageLines(msg).forEach((l) => lines.push(l));
-      if (d) prevDate = d;
-    });
-
-    // Surface quality issues at the top so they can't be missed.
-    const q = captureDiagnostics(messages);
-    const header = q.warnings.length
-      ? "Export warnings:\n" + q.warnings.map((w) => "- " + w).join("\n") + "\n\n"
-      : "";
-    return header + lines.join("\n").replace(/^\n+/, "") + "\n";
+    // Surface quality issues (warnings) at the top so they can't be missed.
+    return renderTranscript(messages, captureDiagnostics(messages).warnings);
   }
 
   /* ---------------- popup messaging ---------------- */
@@ -1274,7 +1000,7 @@
   function healthCheck() {
     const list = getList();
     if (!list) return "No Discord message list found — open a channel.";
-    if (list.querySelectorAll('li[id^="chat-messages-"]').length === 0)
+    if (list.querySelectorAll(SEL.chatMessage).length === 0)
       return "Message list found but no message nodes — Discord's DOM may have changed.";
     return null;
   }

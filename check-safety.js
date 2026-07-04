@@ -12,6 +12,7 @@ const path = require("path");
 const files = [
   "manifest.json",
   "popup.html",
+  "lib.js",
   "content.js",
   "popup.js",
   "fiber-reader.js",

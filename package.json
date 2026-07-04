@@ -5,6 +5,9 @@
   "license": "MIT",
   "description": "Local-only Chrome extension that exports Discord messages you scroll through by hand.",
   "scripts": {
-    "test": "node check-safety.js"
+    "test": "node check-safety.js && node --test",
+    "test:unit": "node --test",
+    "test:safety": "node check-safety.js",
+    "goldens": "node test-support/generate-goldens.js"
   }
 }
