@@ -364,6 +364,102 @@
     return "[MEDIA]";
   }
 
+  // Exact edit time: the "(edited)" marker is wrapped in a <time datetime=…>.
+  function getEditedTimestamp(li) {
+    const contentEl = getContentEl(li);
+    const ed = contentEl && contentEl.querySelector('[class*="edited"]');
+    const t = ed && ed.closest("time[datetime]");
+    return t ? t.getAttribute("datetime") : null;
+  }
+
+  // @-mentions in the message body (display names; user IDs aren't in the DOM).
+  function getMentions(li) {
+    const contentEl = getContentEl(li);
+    if (!contentEl) return [];
+    const out = [];
+    const seen = new Set();
+    contentEl.querySelectorAll('[class*="mention"]').forEach((m) => {
+      let t = (m.textContent || "").trim();
+      if (t[0] !== "@") return; // skip #channel and non-user mentions
+      t = t.slice(1).trim();
+      if (t && !seen.has(t)) {
+        seen.add(t);
+        out.push(t);
+      }
+    });
+    return out;
+  }
+
+  function getStickers(li) {
+    const acc = li.querySelector('[id^="message-accessories-"]') || li;
+    const out = [];
+    const seen = new Set();
+    acc
+      .querySelectorAll('img[class*="sticker"], [class*="clickableSticker"]')
+      .forEach((el) => {
+        const img = el.tagName === "IMG" ? el : el.querySelector("img");
+        const name = (
+          el.getAttribute("aria-label") ||
+          (img && img.getAttribute("alt")) ||
+          ""
+        ).trim();
+        const url = img ? img.getAttribute("src") : null;
+        let id = null;
+        if (url) {
+          const m = url.match(/\/stickers\/(\d+)/);
+          if (m) id = m[1];
+        }
+        const key = id || name || url;
+        if (!key || seen.has(key)) return;
+        seen.add(key);
+        out.push({ id, name: name || null, url: url || null });
+      });
+    return out;
+  }
+
+  // Rich embeds (link previews / bot embeds). Skips pure-media (gifv) embeds,
+  // which are already captured as media. Emits nothing unless a title/desc is found.
+  function getEmbeds(li) {
+    const acc = li.querySelector('[id^="message-accessories-"]');
+    if (!acc) return [];
+    const out = [];
+    acc.querySelectorAll('[class*="embedFull"]').forEach((em) => {
+      const titleEl = em.querySelector('[class*="embedTitle"]');
+      const descEl = em.querySelector('[class*="embedDescription"]');
+      const title = titleEl ? extractText(titleEl) : null;
+      const description = descEl ? extractText(descEl) : null;
+      if (!title && !description) return; // pure media embed — already in media
+      const anchor =
+        (titleEl && titleEl.querySelector("a[href]")) ||
+        (titleEl && titleEl.closest("a[href]"));
+      const authorEl = em.querySelector('[class*="embedAuthor"]');
+      const footerEl = em.querySelector('[class*="embedFooter"]');
+      const fields = [];
+      em.querySelectorAll('[class*="embedField"]').forEach((f) => {
+        const n = f.querySelector('[class*="embedFieldName"]');
+        const v = f.querySelector('[class*="embedFieldValue"]');
+        if (n || v)
+          fields.push({
+            name: n ? extractText(n) : "",
+            value: v ? extractText(v) : "",
+          });
+      });
+      const thumbImg = em.querySelector(
+        '[class*="embedThumbnail"] img, [class*="embedImage"] img, [class*="embedMedia"] img'
+      );
+      out.push({
+        title: title || null,
+        url: anchor ? anchor.getAttribute("href") : null,
+        description: description || null,
+        author: authorEl ? extractText(authorEl) : null,
+        footer: footerEl ? extractText(footerEl) : null,
+        fields,
+        thumbnailUrl: thumbImg ? thumbImg.getAttribute("src") : null,
+      });
+    });
+    return out;
+  }
+
   // Discord's reply preview reuses the referenced message's message-content div
   // (rendered BEFORE the body), so skip anything inside the reply context.
   function getContentEl(li) {
@@ -423,7 +519,11 @@
         isBot: currentIsBot,
         timestamp: getTimestamp(li),
         content: contentEl ? extractText(contentEl) : "",
+        editedTimestamp: getEditedTimestamp(li),
         media: getMedia(li),
+        stickers: getStickers(li),
+        embeds: getEmbeds(li),
+        mentions: getMentions(li),
         reactions: getReactions(li),
         replyTo: getReply(li),
         isSystem: !!li.querySelector('[class*="systemMessage"]'),
@@ -444,6 +544,14 @@
         if (record.reactions.length) existing.reactions = record.reactions;
         if (record.media.length && !existing.media.length)
           existing.media = record.media;
+        if (!existing.editedTimestamp && record.editedTimestamp)
+          existing.editedTimestamp = record.editedTimestamp;
+        if (record.stickers.length && !existing.stickers.length)
+          existing.stickers = record.stickers;
+        if (record.embeds.length && !existing.embeds.length)
+          existing.embeds = record.embeds;
+        if (record.mentions.length && !existing.mentions.length)
+          existing.mentions = record.mentions;
         if (record.content && !existing.content)
           existing.content = record.content;
         // Replace a placeholder/partial reply preview once the real one loads.
@@ -637,8 +745,12 @@
       author: r.author,
       authorId: r.authorId,
       timestamp: r.timestamp,
+      editedTimestamp: r.editedTimestamp || null,
       content: r.content,
       media: r.media,
+      stickers: r.stickers || [],
+      embeds: r.embeds || [],
+      mentions: r.mentions || [],
       reactions: r.reactions,
       replyTo: r.replyTo,
     };
@@ -741,7 +853,7 @@
       id: r.id,
       type: r.replyTo ? "Reply" : "Default",
       timestamp: r.timestamp,
-      timestampEdited: (fib && fib.editedTimestamp) || null,
+      timestampEdited: (fib && fib.editedTimestamp) || r.editedTimestamp || null,
       callEndedTimestamp: null,
       isPinned: false,
       content: r.content || "",
@@ -760,13 +872,39 @@
         fileName: mm.filename || "",
         fileSizeBytes: 0,
       })),
-      embeds: [],
-      stickers: [],
+      embeds: (r.embeds || []).map((e) => ({
+        title: e.title || "",
+        url: e.url || "",
+        timestamp: null,
+        description: e.description || "",
+        color: null,
+        author: e.author ? { name: e.author, url: "", iconUrl: "" } : null,
+        thumbnail: e.thumbnailUrl ? { url: e.thumbnailUrl } : null,
+        images: [],
+        fields: (e.fields || []).map((f) => ({
+          name: f.name || "",
+          value: f.value || "",
+          isInline: false,
+        })),
+        footer: e.footer ? { text: e.footer, iconUrl: "" } : null,
+        inlineEmojis: [],
+      })),
+      stickers: (r.stickers || []).map((s) => ({
+        id: s.id || "",
+        name: s.name || "",
+        format: "",
+        sourceUrl: s.url || "",
+      })),
       reactions: (r.reactions || []).map((rc) => ({
         emoji: dceEmoji(rc),
         count: rc.count,
       })),
-      mentions: [],
+      mentions: (r.mentions || []).map((n) => ({
+        id: "",
+        name: n,
+        discriminator: "0000",
+        nickname: n,
+      })),
       reference: r.replyTo
         ? { messageId: "", channelId, guildId }
         : null,
@@ -885,6 +1023,9 @@
     if ((msg.content || "") !== "")
       msg.content.split("\n").forEach((l) => body.push(l));
     (msg.media || []).forEach((m) => body.push(mediaTag(m)));
+    (msg.stickers || []).forEach((s) =>
+      body.push(`[STICKER: ${s.name || "sticker"}]`)
+    );
 
     if (body.length === 0) {
       if (reactions) out.push(`  ${reactions}`);
