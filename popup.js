@@ -74,18 +74,20 @@ $(".toggle").addEventListener("click", async () => {
 $(".clr").addEventListener("click", async () => {
   render(await send("clear"));
 });
-$(".dl").addEventListener("click", async () => {
-  const r = await send("buildJson");
-  if (r) saveBlob(r.filename, r.text, "application/json");
-});
-$(".txt").addEventListener("click", async () => {
-  const r = await send("buildText");
-  if (r) saveBlob(r.filename, r.text, "text/plain");
-});
-$(".dce").addEventListener("click", async () => {
-  const r = await send("buildDce");
-  if (r) saveBlob(r.filename, r.text, "application/json");
-});
+function afterExport(r, mime) {
+  if (!r) return;
+  saveBlob(r.filename, r.text, mime);
+  $(".exportInfo").textContent = r.summary || "";
+}
+$(".dl").addEventListener("click", async () =>
+  afterExport(await send("buildJson"), "application/json")
+);
+$(".txt").addEventListener("click", async () =>
+  afterExport(await send("buildText"), "text/plain")
+);
+$(".dce").addEventListener("click", async () =>
+  afterExport(await send("buildDce"), "application/json")
+);
 $(".fiber").addEventListener("change", async (e) => {
   const on = e.target.checked;
   if (on) {

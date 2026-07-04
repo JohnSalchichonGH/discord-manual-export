@@ -8,7 +8,7 @@ It reads only what's already on your screen — no automation, no network reques
 
 - **Nothing is sent anywhere.** Messages stay in memory until *you* export them to a local file.
 - **No automation.** You scroll; it just watches. Same footprint as reading the channel normally.
-- **No page injection** (by default). The UI lives entirely in the toolbar popup — nothing is added to Discord's page.
+- **No main-world injection or DOM modification** (by default). Only an isolated-world content script runs on Discord pages — it reads the rendered DOM and adds nothing to the page. The UI lives entirely in the toolbar popup.
 - **Minimal permissions.** Only `scripting` + `activeTab` (used solely by the opt-in High-fidelity toggle below), plus a content script limited to Discord pages. With the toggle off, the extension is pure read-the-DOM and nothing extra runs.
 
 ## High-fidelity mode (optional, off by default)
@@ -32,9 +32,9 @@ This extension will **never**:
 - upload exports, send telemetry, or load remote code
 - persist captured messages anywhere except a file **you** download
 
-This is enforced in code: [`check-safety.js`](check-safety.js) fails if any network / persistence / remote-code API appears in the scripts. Run it with `node check-safety.js` (or `npm test`).
+This is **guarded** (a regression guard, not a formal proof) by [`check-safety.js`](check-safety.js), which fails if any network / persistence / remote-code / privileged-API pattern appears in the shipped files. Run it with `node check-safety.js` (or `npm test`). See also [PRIVACY.md](PRIVACY.md) and [SECURITY.md](SECURITY.md).
 
-Exports may contain private messages, user IDs, media URLs, timestamps, reactions, and reply relationships. Only export conversations you have permission to keep, and don't redistribute other people's messages.
+Exports may contain private messages, user IDs, media URLs, timestamps, reactions, and reply relationships. **Before exporting:** you're a participant (or have permission to archive), you understand exports include private content, and you won't redistribute other people's private messages without consent.
 
 ## Install
 
@@ -97,4 +97,4 @@ A `=== date ===` header is emitted per day; the first message of a day shows an 
 - `authorId` is recovered from the avatar URL, so users on the default avatar (no custom image) won't have one (High-fidelity mode gets it for everyone).
 - In DCE JSON, `author.name` is the account @handle and `nickname` is the display name. The handle is only scraped where Discord shows it (DM header, your account panel), so in server channels it falls back to the display name unless High-fidelity mode is on.
 - Selectors follow Discord's current DOM, so a major Discord update may need a tweak.
-- **Personal use, own conversations.** Discord's Terms prohibit scraping the service without consent; don't redistribute other people's private messages. Keep this an unpacked extension for yourself rather than publishing it.
+- **Personal use — and still policy-sensitive.** Discord's Terms prohibit scraping the service without written consent (including via software/processes), so this **may violate Discord's Terms even for personal use** — understand the account/platform risk. Don't redistribute other people's private messages. Keep it an unpacked extension for yourself; public distribution would also need a privacy policy and disclosures.

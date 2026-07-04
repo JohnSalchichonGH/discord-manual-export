@@ -9,10 +9,11 @@
  * returns a few fields to the extension. It NEVER: patches anything, makes a
  * network request, adds a global, or mutates page state — it only reads.
  *
- * Channel: it hands data back over a private MessagePort received in a single
- * nonce-keyed handshake, so the payloads never ride the shared `window` message
- * bus. If the cross-world port transfer doesn't take, it answers nonce-keyed
- * `window` requests instead (graceful fallback).
+ * Channel: it hands data back ONLY over a private MessagePort received in a
+ * single nonce-keyed handshake, so the payloads never ride the shared `window`
+ * message bus. If the cross-world port transfer doesn't take, high-fidelity is
+ * reported unavailable (fail closed) — captured data is never sent over the
+ * window bus.
  *
  * SENTRY SAFETY: every function body and callback is wrapped in try/catch, it
  * never calls console.*, and it uses no promises — so it can never surface an

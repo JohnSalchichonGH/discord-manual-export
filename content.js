@@ -1230,6 +1230,20 @@
     };
   }
 
+  // One-line quality note shown in the popup after an export.
+  function qualitySummary() {
+    const msgs = sortedMessages();
+    const missingAuthor = msgs.filter((m) => !m.author).length;
+    const replies = msgs.filter((m) => m.replyTo);
+    const unresolved = replies.filter(
+      (m) => !(m.replyTo && m.replyTo.messageId)
+    ).length;
+    const parts = [`${msgs.length} exported`];
+    if (missingAuthor) parts.push(`${missingAuthor} missing author`);
+    if (unresolved) parts.push(`${unresolved} unresolved replies`);
+    return parts.join(" · ");
+  }
+
   chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     switch (msg && msg.type) {
       case "getState":
@@ -1258,13 +1272,25 @@
         sendResponse(state());
         break;
       case "buildJson":
-        sendResponse({ filename: exportName("json"), text: buildJsonString() });
+        sendResponse({
+          filename: exportName("json"),
+          text: buildJsonString(),
+          summary: qualitySummary(),
+        });
         break;
       case "buildText":
-        sendResponse({ filename: exportName("txt"), text: buildTranscript() });
+        sendResponse({
+          filename: exportName("txt"),
+          text: buildTranscript(),
+          summary: qualitySummary(),
+        });
         break;
       case "buildDce":
-        sendResponse({ filename: exportName("dce.json"), text: buildDceJson() });
+        sendResponse({
+          filename: exportName("dce.json"),
+          text: buildDceJson(),
+          summary: qualitySummary(),
+        });
         break;
       default:
         sendResponse(null);
