@@ -8,8 +8,18 @@ It reads only what's already on your screen — no automation, no network reques
 
 - **Nothing is sent anywhere.** Messages stay in memory until *you* export them to a local file.
 - **No automation.** You scroll; it just watches. Same footprint as reading the channel normally.
-- **No page injection.** The UI lives entirely in the toolbar popup — nothing is added to Discord's page.
-- **No permissions.** The manifest requests none, so the page can't even tell it's installed.
+- **No page injection** (by default). The UI lives entirely in the toolbar popup — nothing is added to Discord's page.
+- **Minimal permissions.** Only `scripting` + `activeTab`, used solely by the opt-in High-fidelity toggle below. With it off, the extension is pure read-the-DOM and nothing extra runs.
+
+## High-fidelity mode (optional, off by default)
+
+A toggle in the popup that reads Discord's own in-page data (React state) to add **exact @handles** and **exact reply links — including replies to images/GIFs**, which the rendered page alone can't provide.
+
+- It injects a small **read-only** script into the page **only while the toggle is on** (off = nothing in the page, same as the default).
+- It makes **no network requests** and **patches nothing** — it only reads state Discord already loaded.
+- It's written so it can **never** surface an error into Discord's telemetry (every path is wrapped; it never throws or logs).
+- **Data flows over a private `MessagePort`.** No export data is broadcast over repeated `window.postMessage`; the only thing on the shared bus is a **single, data-less handshake** keyed by a **random per-session nonce** (no static marker). Honest caveat: that handshake transfers the port, which is briefly exposed in the event's `ports` to any `message` listener — so this hides the data from *passive/ordinary* listeners, but it is **not** a hard confidentiality boundary against page code that specifically hooks transferred ports. Real data only touches the window bus at all if the cross-world port transfer fails (a timeout-gated fallback).
+- Trade-off vs. the pure-DOM default: it runs in the page context, sharing Discord's JS environment. That's low-signal and non-specific in practice, but **not** the hard isolated-world guarantee of the default — anything Discord has already instrumented in the page (e.g. wrapped `addEventListener`) could in principle observe corresponding behavior, and it's more fragile to Discord front-end updates. **DOM-only (toggle off) remains the lowest-surface mode.**
 
 ## Install
 

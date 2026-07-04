@@ -23,6 +23,117 @@
   let debounceTimer = null;
   let capturing = false;
 
+  // Opt-in high-fidelity layer: the MAIN-world fiber reader (injected by the
+  // popup only when enabled) returns richer per-message data. Data flows over a
+  // private MessagePort; a nonce-keyed window channel is the fallback only.
+  let fiberEnabled = false;
+  let fiberNonce = null;
+  let fiberChannel = null;
+  let fiberPort = null;
+  let portConfirmed = false;
+  let portFailed = false; // set only if the private port never answers
+  let fiberTimer = null;
+  const fiberStore = new Map(); // messageId -> { referenceId, username, ... }
+
+  function mergeFiber(arr) {
+    for (const fm of arr) {
+      if (!fm || !fm.id) continue;
+      const ex = fiberStore.get(fm.id) || {};
+      ["referenceId", "username", "globalName", "discriminator", "editedTimestamp"].forEach(
+        (k) => {
+          if (fm[k]) ex[k] = fm[k];
+        }
+      );
+      fiberStore.set(fm.id, ex);
+    }
+  }
+
+  function setupFiberChannel() {
+    try {
+      fiberChannel = new MessageChannel();
+      fiberPort = fiberChannel.port1;
+      portConfirmed = false;
+      portFailed = false;
+      fiberPort.onmessage = (e) => {
+        try {
+          const d = e.data || {};
+          if (Array.isArray(d.r)) {
+            if (!portConfirmed) {
+              portConfirmed = true;
+              clearTimeout(fiberTimer);
+              try {
+                fiberPort.postMessage({ cmd: "portOk" }); // reader can drop window listener
+              } catch (er) {}
+            }
+            mergeFiber(d.r);
+          }
+        } catch (er) {}
+      };
+      try {
+        fiberPort.start();
+      } catch (er) {}
+      // One data-less, random-keyed handshake hands the reader its port.
+      window.postMessage({ k: fiberNonce, h: 1 }, location.origin, [fiberChannel.port2]);
+      // If the port never answers, THEN (and only then) fall back to the window
+      // bus — so real data is never broadcast while the private port is working.
+      clearTimeout(fiberTimer);
+      fiberTimer = setTimeout(() => {
+        if (fiberEnabled && !portConfirmed) {
+          portFailed = true;
+          requestFiber();
+        }
+      }, 800);
+    } catch (e) {}
+  }
+
+  function requestFiber() {
+    if (!fiberEnabled || !fiberNonce) return;
+    try {
+      if (fiberPort) {
+        try {
+          fiberPort.postMessage({ cmd: "read" });
+        } catch (e) {}
+      }
+      // Window bus is used ONLY after the private port is confirmed to have
+      // failed — otherwise no export data ever touches the shared bus.
+      if (portFailed && !portConfirmed) {
+        try {
+          window.postMessage({ k: fiberNonce, cmd: "read" }, location.origin);
+        } catch (e) {}
+      }
+    } catch (e) {}
+  }
+
+  function teardownFiber() {
+    fiberEnabled = false;
+    clearTimeout(fiberTimer);
+    try {
+      if (fiberPort) fiberPort.postMessage({ cmd: "disable" });
+    } catch (e) {}
+    try {
+      if (fiberNonce) window.postMessage({ k: fiberNonce, cmd: "disable" }, location.origin);
+    } catch (e) {}
+    try {
+      if (fiberPort) fiberPort.close();
+    } catch (e) {}
+    fiberPort = null;
+    fiberChannel = null;
+    portConfirmed = false;
+    portFailed = false;
+    fiberNonce = null;
+  }
+
+  // Fallback receive path: reader responses over the window bus, used only if the
+  // private port didn't come through. Nonce-keyed; anything else is ignored.
+  window.addEventListener("message", (ev) => {
+    try {
+      if (ev.source !== window || !fiberNonce) return;
+      const d = ev.data;
+      if (!d || d.k !== fiberNonce) return;
+      if (Array.isArray(d.r)) mergeFiber(d.r);
+    } catch (e) {}
+  });
+
   /* ---------------- extraction helpers ---------------- */
 
   function extractText(node) {
@@ -342,6 +453,8 @@
         store.set(id, record);
       }
     });
+
+    requestFiber(); // ask the fiber reader (if on) to enrich the visible messages
   }
 
   const debouncedCapture = () => {
@@ -370,6 +483,7 @@
 
   function clearAll() {
     store.clear();
+    fiberStore.clear();
   }
 
   /* ---------------- export builders (return strings; popup saves them) ---------------- */
@@ -517,7 +631,15 @@
   }
 
   function buildJsonString() {
-    const messages = sortedMessages().map(cleanMessage);
+    const messages = sortedMessages().map((r) => {
+      const c = cleanMessage(r);
+      const fib = fiberStore.get(r.id);
+      if (fib) {
+        if (fib.username) c.username = fib.username;
+        if (fib.referenceId && c.replyTo) c.replyTo.messageId = fib.referenceId;
+      }
+      return c;
+    });
     return JSON.stringify(
       {
         channel: channelInfo(),
@@ -595,23 +717,24 @@
     };
   }
 
-  function dceMessage(r, guildId, channelId, usernameMap) {
+  function dceMessage(r, guildId, channelId, usernameMap, fib) {
     const display = r.author || "";
-    // name = account @handle (from DM header / account panel), nickname = display
-    // name shown in the chat. Falls back to the display name when no handle known.
-    const username = (usernameMap && usernameMap.get(display)) || display;
+    // name = account @handle: prefer the fiber reader's exact username, then the
+    // DM-header/panel scrape, else fall back to the display name.
+    const username =
+      (fib && fib.username) || (usernameMap && usernameMap.get(display)) || display;
     return {
       id: r.id,
       type: r.replyTo ? "Reply" : "Default",
       timestamp: r.timestamp,
-      timestampEdited: null,
+      timestampEdited: (fib && fib.editedTimestamp) || null,
       callEndedTimestamp: null,
       isPinned: false,
       content: r.content || "",
       author: {
         id: r.authorId || "",
         name: username,
-        discriminator: "0000",
+        discriminator: (fib && fib.discriminator) || "0000",
         nickname: display,
         color: r.color || null,
         isBot: !!r.isBot,
@@ -673,11 +796,14 @@
     const records = sortedMessages();
     const usernameMap = buildUsernameMap();
     const messages = records.map((r) => {
-      const msg = dceMessage(r, guild.id, channel.id, usernameMap);
+      const fib = fiberStore.get(r.id) || null;
+      const msg = dceMessage(r, guild.id, channel.id, usernameMap, fib);
       if (msg.reference)
-        // Prefer the exact id read from the reply preview; fall back to matching.
+        // Prefer the fiber reader's exact id, then the reply-preview id, then match.
         msg.reference.messageId =
-          (r.replyTo && r.replyTo.messageId) || resolveReferenceId(r, records);
+          (fib && fib.referenceId) ||
+          (r.replyTo && r.replyTo.messageId) ||
+          resolveReferenceId(r, records);
       return msg;
     });
     return JSON.stringify(
@@ -793,12 +919,23 @@
   /* ---------------- popup messaging ---------------- */
 
   function state() {
-    return { capturing, count: store.size };
+    return { capturing, count: store.size, fiber: fiberEnabled };
   }
 
   chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     switch (msg && msg.type) {
       case "getState":
+        sendResponse(state());
+        break;
+      case "setFiber":
+        if (msg.on) {
+          fiberNonce = msg.nonce || null;
+          fiberEnabled = true;
+          setupFiberChannel();
+          requestFiber();
+        } else {
+          teardownFiber();
+        }
         sendResponse(state());
         break;
       case "start":

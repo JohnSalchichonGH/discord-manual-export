@@ -9,14 +9,17 @@ let tabId = null;
 let lastState = null;
 let pollTimer = null;
 
-function send(type) {
+function sendMsg(obj) {
   return new Promise((resolve) => {
     if (tabId == null) return resolve(null);
-    chrome.tabs.sendMessage(tabId, { type }, (resp) => {
+    chrome.tabs.sendMessage(tabId, obj, (resp) => {
       if (chrome.runtime.lastError) return resolve(null); // no content script here
       resolve(resp);
     });
   });
+}
+function send(type) {
+  return sendMsg({ type });
 }
 
 function saveBlob(filename, text, mime) {
@@ -31,7 +34,7 @@ function saveBlob(filename, text, mime) {
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
-const controls = [".toggle", ".dl", ".txt", ".dce", ".clr"];
+const controls = [".toggle", ".dl", ".txt", ".dce", ".clr", ".fiber"];
 
 function render(st) {
   lastState = st;
@@ -49,6 +52,7 @@ function render(st) {
   $(".dot").classList.toggle("on", st.capturing);
   toggle.textContent = st.capturing ? "Stop capture" : "Start capture";
   toggle.className = "toggle " + (st.capturing ? "stop" : "go");
+  $(".fiber").checked = !!st.fiber;
 }
 
 async function refresh() {
@@ -72,6 +76,34 @@ $(".txt").addEventListener("click", async () => {
 $(".dce").addEventListener("click", async () => {
   const r = await send("buildDce");
   if (r) saveBlob(r.filename, r.text, "application/json");
+});
+$(".fiber").addEventListener("change", async (e) => {
+  const on = e.target.checked;
+  if (on) {
+    // Random per-session nonce — no static marker on the wire.
+    const nonce =
+      (crypto.randomUUID && crypto.randomUUID()) ||
+      Math.random().toString(36).slice(2) + Date.now().toString(36);
+    // Inject the read-only fiber reader into the page's main world with the nonce.
+    try {
+      await chrome.scripting.executeScript({
+        target: { tabId },
+        world: "MAIN",
+        func: fiberReaderMain,
+        args: [nonce],
+      });
+    } catch (err) {
+      e.target.checked = false;
+      $(".status").textContent = "Couldn't enable high-fidelity on this tab.";
+      return;
+    }
+    $(".status").textContent = "";
+    const st = await sendMsg({ type: "setFiber", on: true, nonce });
+    if (st) render(st);
+  } else {
+    const st = await sendMsg({ type: "setFiber", on: false });
+    if (st) render(st);
+  }
 });
 
 (async function init() {

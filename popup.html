@@ -66,6 +66,27 @@
       .dce:hover:not(:disabled) { background: #5c5e66; }
       .clr { background: #3a3c41; }
       .clr:hover:not(:disabled) { background: #4a4d52; }
+      .fiberRow {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin-top: 10px;
+        padding-top: 10px;
+        border-top: 1px solid #2b2d31;
+        font-size: 12px;
+        color: #dbdee1;
+        cursor: pointer;
+      }
+      .fiberRow input {
+        width: auto;
+        margin: 0;
+        cursor: pointer;
+      }
+      .fiberHint {
+        font-size: 11px;
+        color: #949ba4;
+        margin-top: 4px;
+      }
       .status {
         font-size: 11px;
         color: #f0b232;
@@ -87,11 +108,19 @@
     <button class="txt">Download Text</button>
     <button class="dce">Download DCE JSON</button>
     <button class="clr">Clear</button>
+    <label class="fiberRow"
+      ><input type="checkbox" class="fiber" /> High-fidelity (React)</label
+    >
+    <div class="fiberHint">
+      Reads Discord's own data for exact @handles and reply links (incl. media).
+      Runs a read-only script in the page — no network, nothing when off.
+    </div>
     <div class="status"></div>
     <div class="hint">
       Open a channel and scroll it by hand — messages are captured as they appear.
       Keep this popup open to watch the counter.
     </div>
+    <script src="fiber-reader.js"></script>
     <script src="popup.js"></script>
   </body>
 </html>
